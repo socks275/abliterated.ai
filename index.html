@@ -1609,7 +1609,9 @@
     background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg); max-height: 480px; display: none; flex-direction: column; z-index: 100; overflow: hidden;
   }
-  .model-picker-dropdown.open { display: flex; }
+  .model-picker-dropdown.open { display: flex; animation: dropdownIn 0.14s ease; }
+  @keyframes dropdownIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform:none; } }
+  .model-picker-item.keyboard-focus { background: var(--bg-hover); outline: 2px solid var(--accent-border); outline-offset: -2px; }
   .model-picker-search { padding: 10px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
   .model-picker-search input {
     flex: 1; background: var(--bg-canvas); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -1693,6 +1695,8 @@
     padding: 12px 14px;
     margin-top: 2px;
   }
+  .model-search-bar:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .model-search-bar input::placeholder { color: var(--text-muted); opacity: 0.8; }
 
   .model-catalog-head {
     display: flex;
@@ -2357,7 +2361,7 @@
           <div class="model-picker-dropdown" id="modelPickerDropdown">
             <div class="model-picker-search">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <input type="text" id="modelPickerSearch" placeholder="Search models…" autocomplete="off" />
+              <input type="text" id="modelPickerSearch" placeholder="Search 25 models — try &#34;vision&#34; or &#34;llm7&#34;…" autocomplete="off" />
               <span class="kbd">/</span>
             </div>
             <div class="model-picker-list" id="modelPickerList"></div>
@@ -3211,6 +3215,7 @@
   let aiHordeLiveModels = null; // null = use AIHORDE_SEED_MODELS until live sync finishes; array = live online workers
   let models = buildCatalogModels();
   let catalogFilter = "all"; // "all" | "abliteration" | "text" | "vision" | "extra"
+let modelSearchQuery = "";
   let proxyAvailable = false;
   let networkBlockedHint = false;
   let chats = loadChats();
@@ -8962,12 +8967,14 @@ let studio = loadStudioState();
 
     const cachedSet = new Set(Array.isArray(settings.cachedBrowserModels) ? settings.cachedBrowserModels : []);
     const isOnlineCloud = m => m.provider === "aihorde" || m.provider === "pollinations" || m.provider === "llm7" || m.isDetected;
+    const q = (modelSearchQuery||"").trim().toLowerCase();
     const filteredModels = models.filter(m => {
-      if (catalogFilter === "online") return isOnlineCloud(m);
-      if (catalogFilter === "abliterated") return isAbliteratedModel(m);
-      if (catalogFilter === "standard") return !isAbliteratedModel(m);
-      if (catalogFilter === "text") return !modelSupportsImages(m);
-      if (catalogFilter === "vision") return modelSupportsImages(m);
+      if (catalogFilter === "online" && !isOnlineCloud(m)) return false;
+      if (catalogFilter === "abliterated" && !isAbliteratedModel(m)) return false;
+      if (catalogFilter === "standard" && isAbliteratedModel(m)) return false;
+      if (catalogFilter === "text" && modelSupportsImages(m)) return false;
+      if (catalogFilter === "vision" && !modelSupportsImages(m)) return false;
+      if (q && !`${m.id} ${m.display_name||""} ${m.base_model||""} ${PROVIDER_LABELS[m.provider]||""}`.toLowerCase().includes(q)) return false;
       return true;
     });
 
@@ -9031,6 +9038,12 @@ let studio = loadStudioState();
               <button type="button" class="model-filter-tab ${catalogFilter === "text" ? "active" : ""}" data-catalog-filter="text">Text only (${textOnlyCount})</button>
               <button type="button" class="model-filter-tab ${catalogFilter === "vision" ? "active" : ""}" data-catalog-filter="vision">Text + Vision (${visionCount})</button>
             </div>
+          </div>
+          <div class="model-search-bar" style="display:flex;align-items:center;gap:8px;margin:8px 0 10px;padding:8px 10px;background:var(--bg-canvas);border:1px solid var(--border);border-radius:10px;position:sticky;top:0;z-index:1;backdrop-filter:blur(6px);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);flex-shrink:0;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="modelCatalogSearch" placeholder="Search ${models.length} models — name, provider, vision..." value="${escHtml(modelSearchQuery)}" style="flex:1;background:transparent;border:none;outline:none;font-size:13px;color:var(--text-primary);" autocomplete="off" />
+            ${modelSearchQuery ? `<button type="button" data-clear-model-search style="padding:2px 8px;border-radius:6px;background:var(--bg-elevated);border:1px solid var(--border);font-size:11px;color:var(--text-muted);">Clear</button>` : `<span style="font-size:11px;color:var(--text-muted);">⌘K</span>`}
+            <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${filteredModels.length} shown</span>
           </div>
           <div class="model-catalog-grid">${cardsHtml || '<div style="padding:24px;text-align:center;color:var(--text-muted);grid-column:1/-1;">No models match this filter — click <strong>All</strong> above to see all '+models.length+' verified models.</div>'}</div>
         </div>
@@ -9731,7 +9744,25 @@ let studio = loadStudioState();
   // Premium model picker wiring (10× polished vs native select)
   document.getElementById("modelPickerBtn")?.addEventListener("click", (e)=>{ e.stopPropagation(); toggleModelPicker(); });
   document.getElementById("modelPickerSearch")?.addEventListener("input", (e)=> renderModelPickerDropdown(e.target.value));
-  document.getElementById("modelPickerSearch")?.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ e.preventDefault(); closeModelPicker(); }});
+  document.getElementById("modelPickerSearch")?.addEventListener("keydown", (e)=>{
+    if(e.key==="Escape"){ e.preventDefault(); closeModelPicker(); }
+    if(e.key==="ArrowDown" || e.key==="ArrowUp"){
+      e.preventDefault();
+      const items=[...document.querySelectorAll("#modelPickerList .model-picker-item")];
+      if(!items.length) return;
+      let idx=items.findIndex(el=> el.classList.contains("keyboard-focus"));
+      if(idx===-1) idx = e.key==="ArrowDown" ? -1 : 0;
+      if(idx>=0) items[idx].classList.remove("keyboard-focus");
+      idx = e.key==="ArrowDown" ? Math.min(items.length-1, idx+1) : Math.max(0, idx-1);
+      items[idx].classList.add("keyboard-focus");
+      items[idx].scrollIntoView({ block:"nearest" });
+    }
+    if(e.key==="Enter"){
+      const focused=document.querySelector("#modelPickerList .model-picker-item.keyboard-focus");
+      const target = focused || document.querySelector("#modelPickerList .model-picker-item");
+      if(target){ e.preventDefault(); target.click(); }
+    }
+  });
   document.addEventListener("click", (e)=>{ const w=document.getElementById("modelPickerWrap"); if(w && !w.contains(e.target)) closeModelPicker(); });
   el.newChatBtn.addEventListener("click", () => {
     if (isStreaming) activeAbortController?.abort();
@@ -10454,6 +10485,46 @@ let studio = loadStudioState();
 
   // Composer events
   el.promptInput.addEventListener("input", ()=>{ autoResizeTextarea(); try{ localStorage.setItem(DRAFT_KEY, el.promptInput.value);}catch{}; handleSlashMenu(); });
+  // Model catalog live search (dropdown + search bar) — delegated on messagesInner for empty state
+  el.messagesInner.addEventListener("input", (e)=>{
+    if(e.target && e.target.id === "modelCatalogSearch"){
+      modelSearchQuery = e.target.value;
+      // re-render only grid without full empty state flicker
+      const q = (modelSearchQuery||"").trim().toLowerCase();
+      const isOnlineCloud = m => m.provider === "aihorde" || m.provider === "pollinations" || m.provider === "llm7" || m.isDetected;
+      let filtered = models.filter(m=>{
+        if (catalogFilter === "online" && !isOnlineCloud(m)) return false;
+        if (catalogFilter === "abliterated" && !isAbliteratedModel(m)) return false;
+        if (catalogFilter === "standard" && isAbliteratedModel(m)) return false;
+        if (catalogFilter === "text" && modelSupportsImages(m)) return false;
+        if (catalogFilter === "vision" && !modelSupportsImages(m)) return false;
+        if (q && !`${m.id} ${m.display_name||""} ${m.base_model||""}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
+      // update count + grid
+      const grid = el.messagesInner.querySelector(".model-catalog-grid");
+      const countEl = el.messagesInner.querySelector(".model-search-bar span:last-child");
+      if(countEl) countEl.textContent = filtered.length + " shown";
+      if(grid){
+        const cachedSet = new Set(Array.isArray(settings.cachedBrowserModels) ? settings.cachedBrowserModels : []);
+        const isOnlineCloud2 = m => m.provider === "aihorde" || m.provider === "pollinations" || m.provider === "llm7" || m.isDetected;
+        const cards = filtered.map(m=>{
+          const isVis = modelSupportsImages(m);
+          const isAblit = isAbliteratedModel(m);
+          const isActive = m.id === settings.model;
+          const ctx = formatCtxShort(m.context_length);
+          const provLabel = PROVIDER_LABELS[m.provider || "browser"] || m.provider;
+          const readyTag = m.isDetected ? "Ready Now · Local" : (m.provider === "browser" ? (cachedSet.has(m.id) ? "✓ Cached Offline" : "Optional Offline") : "Online · Zero Download");
+          const metaParts = [provLabel, m.base_model, ctx, readyTag].filter(Boolean);
+          return `<button type="button" class="model-pill-card ${isActive ? "active" : ""}" data-select-model="${escHtml(m.id)}" title="${escHtml(m.id)}"><div class="model-pill-info"><span class="model-pill-name">${escHtml(m.display_name || m.id)}</span><span class="model-pill-meta">${escHtml(metaParts.join(" · "))}</span></div><div class="model-pill-badges"><span class="mod-tag ${isAblit ? "ablit" : "standard"}">${isAblit ? "ABLITERATED" : "NON-ABLITERATED"}</span><span class="mod-tag ${isVis ? "vision" : "text-only"}">${isVis ? "TEXT + VISION" : "TEXT ONLY"}</span></div></button>`;
+        }).join("");
+        grid.innerHTML = cards || `<div style="padding:20px;text-align:center;color:var(--text-muted);grid-column:1/-1;">No models match “${escHtml(modelSearchQuery)}” — try a different term or clear filters.</div>`;
+        // keep focus
+        const inp = el.messagesInner.querySelector("#modelCatalogSearch");
+        if(inp){ inp.focus(); const len = inp.value.length; try{ inp.setSelectionRange(len,len);}catch{} }
+      }
+    }
+  });
 
   // 10× Slash commands — autocomplete like Claude
   const slashCommands = [
@@ -10596,9 +10667,17 @@ let studio = loadStudioState();
     if (filterBtn) {
       catalogFilter = filterBtn.dataset.catalogFilter || "all";
       renderEmptyState();
+      // restore focus to search if was active
+      const inp = document.getElementById("modelCatalogSearch");
+      if(inp){ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
       return;
     }
-
+    const clearBtn = e.target.closest("[data-clear-model-search]");
+    if (clearBtn) {
+      modelSearchQuery = "";
+      renderEmptyState();
+      return;
+    }
     // Welcome catalog model card click
     const modelCard = e.target.closest("[data-select-model]");
     if (modelCard) {

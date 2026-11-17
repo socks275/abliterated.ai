@@ -2259,7 +2259,8 @@
 </style>
 </head>
 <body>
-<div class="app-shell">
+<div class="app-shell" style="animation: appFadeIn 0.35s ease-out;">
+<style>@keyframes appFadeIn { from { opacity:0; } to { opacity:1; } }</style>
   <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
@@ -2296,7 +2297,7 @@
 
     <details class="sidebar-projects" id="sidebarProjects" style="margin:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);">
       <summary style="padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
-        <span>📁 Projects & Knowledge</span><span style="font-size:10px;color:var(--text-muted);" id="projectsCount">0 files</span>
+        <span>📁 Projects & Knowledge — 10× Workspace</span><span style="font-size:10px;color:var(--text-muted);" id="projectsCount">0 files</span>
       </summary>
       <div style="padding:8px 10px;border-top:1px solid var(--border);">
         <div id="projectsList" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;"></div>
@@ -3473,9 +3474,17 @@ let studio = loadStudioState();
       const raw = localStorage.getItem(STORAGE_CHATS);
       if (raw) {
         const arr = JSON.parse(raw);
-        if (Array.isArray(arr) && arr.length) return arr;
+        if (Array.isArray(arr)) {
+          // Validate and sanitize each chat — prevent blank screen from corrupt data
+          const sane = arr.filter(c => c && typeof c.id === 'string' && Array.isArray(c.messages)).map(c => ({
+            ...c,
+            title: typeof c.title === 'string' ? c.title.slice(0, 120) : "New conversation",
+            messages: c.messages.filter(m => m && typeof m.role === 'string' && (m.role === 'user' || m.role === 'assistant')).slice(-200) // cap at 200 msgs per chat
+          }));
+          if (sane.length) return sane;
+        }
       }
-    } catch {}
+    } catch (e) { console.warn("loadChats corrupted, resetting", e); }
     if (Array.isArray(PORTABLE_STATE?.chats)) return PORTABLE_STATE.chats;
     return [];
   }
@@ -3498,10 +3507,20 @@ let studio = loadStudioState();
       </div>`).join("");
   }
 
-  function buildProjectsContext(){
+  function buildProjectsContext(filterQuery=""){
     if(!projects.length) return "";
-    const total = projects.reduce((a,b)=>a+(b.text?.length||0),0);
-    const cap = 12000; // don't blow context
+    // Smart filter: if user asks about a specific project file, prioritize it
+    let ranked = [...projects];
+    if(filterQuery){
+      const q = filterQuery.toLowerCase();
+      ranked.sort((a,b)=>{
+        const aScore = a.name.toLowerCase().includes(q) ? 0 : (a.text.toLowerCase().includes(q) ? 1 : 2);
+        const bScore = b.name.toLowerCase().includes(q) ? 0 : (b.text.toLowerCase().includes(q) ? 1 : 2);
+        return aScore - bScore;
+      });
+    }
+    const total = ranked.reduce((a,b)=>a+(b.text?.length||0),0);
+    const cap = 16000; // increased to 16K for 10× context power
     let out = "\n\n[PROJECT KNOWLEDGE — persistent files attached like Claude Projects. Use this context when relevant]:\n";
     for(const p of projects){
       const snippet = p.text.slice(0, cap);
@@ -3514,16 +3533,26 @@ let studio = loadStudioState();
 
   function saveChats() {
     try {
-      // Trim huge base64 images only if storage quota is exceeded
       localStorage.setItem(STORAGE_CHATS, JSON.stringify(chats));
-    } catch {
+    } catch (e) {
+      console.warn("saveChats quota hit, slimming", e);
       try {
-        const slim = chats.map(c => ({
+        // Slim: drop images, truncate long messages, keep last 50 chats
+        const slim = chats.slice(0, 50).map(c => ({
           ...c,
-          messages: c.messages.map(m => ({ ...m, images: undefined }))
+          messages: c.messages.slice(-80).map(m => ({
+            ...m,
+            content: typeof m.content === "string" && m.content.length>8000 ? m.content.slice(0,8000)+"…(truncated)" : m.content,
+            images: undefined,
+            reasoning: undefined
+          }))
         }));
         localStorage.setItem(STORAGE_CHATS, JSON.stringify(slim));
-      } catch {}
+        showToast("Chats trimmed to fit storage — images removed from old chats");
+      } catch (e2) {
+        console.error("saveChats failed even after slim", e2);
+        try { localStorage.removeItem(STORAGE_CHATS); } catch {}
+      }
     }
   }
 
@@ -8417,7 +8446,7 @@ let studio = loadStudioState();
     // Inject Projects Knowledge as context (like Claude Projects) — prepend to first user message
     let apiMessages = buildApiMessages(historyChat, webOn, provCfg.provider === "browser" ? null : activeTools);
     try{
-      const projCtx = buildProjectsContext();
+      const projCtx = buildProjectsContext(apiMessages.at(-1)?.content || lastUserPrompt || "");
       if(projCtx){
         const firstUserIdx = apiMessages.findIndex(m=> m.role==="user");
         if(firstUserIdx!==-1){
@@ -8903,6 +8932,7 @@ let studio = loadStudioState();
               ${c.usedWeb ? `<span style="color:var(--web);">· WEB</span>` : ""}
             </div>
           </div>
+          <button class="chat-item-del" data-dup-chat="${escHtml(c.id)}" title="Duplicate chat" style="margin-right:4px;">⧉</button>
           <button class="chat-item-del" data-del-chat="${escHtml(c.id)}" title="Delete chat">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </button>
@@ -9240,12 +9270,14 @@ let studio = loadStudioState();
   }
 
   function scrollToBottom() {
-    el.messagesWrap.scrollTop = el.messagesWrap.scrollHeight;
+    try { el.messagesWrap.scrollTo({ top: el.messagesWrap.scrollHeight, behavior: "smooth" }); } catch { el.messagesWrap.scrollTop = el.messagesWrap.scrollHeight; }
   }
 
   function autoScrollIfNearBottom() {
     const dist = el.messagesWrap.scrollHeight - el.messagesWrap.scrollTop - el.messagesWrap.clientHeight;
-    if (dist < 140) el.messagesWrap.scrollTop = el.messagesWrap.scrollHeight;
+    if (dist < 180) {
+      try { el.messagesWrap.scrollTo({ top: el.messagesWrap.scrollHeight, behavior: "smooth" }); } catch { el.messagesWrap.scrollTop = el.messagesWrap.scrollHeight; }
+    }
   }
 
   // ── Controls Sync ───────────────────────────────────────────────────────────
@@ -9704,6 +9736,20 @@ let studio = loadStudioState();
   el.chatSearchInput.addEventListener("input", renderChatList);
 
   el.chatList.addEventListener("click", (e) => {
+    const dupBtn = e.target.closest("[data-dup-chat]");
+    if (dupBtn) {
+      e.stopPropagation();
+      const id = dupBtn.dataset.dupChat;
+      const src = chats.find(c=> c.id===id);
+      if(src){
+        const copy = JSON.parse(JSON.stringify(src));
+        copy.id = "chat_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);
+        copy.title = (src.title||"Chat") + " (copy)";
+        copy.createdAt = Date.now(); copy.updatedAt = Date.now();
+        chats.unshift(copy); activeChatId = copy.id; saveChats(); renderChatList(); renderMessages(); showToast("Duplicated chat");
+      }
+      return;
+    }
     const delBtn = e.target.closest("[data-del-chat]");
     if (delBtn) {
       e.stopPropagation();
@@ -10843,6 +10889,21 @@ let studio = loadStudioState();
   }
 
   // ── Bootstrap ───────────────────────────────────────────────────────────────
+  // Global error boundary — never show blank screen
+  window.addEventListener("error", (e)=>{
+    console.error("Global error:", e.message, e.filename+":"+e.lineno);
+    const wrap = document.getElementById("messagesInner");
+    if(wrap && !wrap.innerHTML.trim()){
+      wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted);">
+        <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">⚡ Something glitched — but your chats are safe</div>
+        <div style="font-size:12px;margin-bottom:12px;">${(e.message||"Unknown error").slice(0,120)}</div>
+        <button onclick="location.reload()" style="padding:6px 14px;border-radius:8px;background:var(--accent);color:#09090b;font-weight:600;">Reload app</button>
+        <button onclick="localStorage.clear();location.reload()" style="padding:6px 14px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border);margin-left:8px;">Reset data</button>
+      </div>`;
+    }
+  });
+  window.addEventListener("unhandledrejection", (e)=>{ console.warn("Unhandled rejection:", e.reason); });
+
   async function init() {
     try { performance.mark("ablit-init-start"); } catch {}
     syncThemeUI();

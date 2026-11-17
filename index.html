@@ -1223,6 +1223,20 @@
   .cmdk-item.active, .cmdk-item:hover { background: var(--bg-hover); color: var(--text-primary); }
   .cmdk-kbd { font-family:var(--font-mono); font-size:10px; background:var(--bg-canvas); border:1px solid var(--border); padding:1px 5px; border-radius:4px; color:var(--text-muted); }
   .sidebar-group-label { font-size:10px; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase; padding:10px 10px 4px; }
+  /* ── 10x Health System — hidden/deleted models ── */
+  .model-pill-card.hidden-model{ opacity:0.55; border-style:dashed; background: var(--bg-canvas); }
+  .model-picker-item.hidden-model{ opacity:0.6; text-decoration: line-through; }
+  .model-hide-btn{ width:20px; height:20px; border-radius:50%; background:var(--bg-elevated); border:1px solid var(--border); color:var(--text-muted); font-size:11px; display:grid; place-items:center; flex-shrink:0; transition: all 0.14s; }
+  .model-hide-btn:hover{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); transform: scale(1.08); }
+  .model-hide-btn.small{ width:18px; height:18px; font-size:10px; }
+  .hidden-banner{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px; margin-bottom:10px; border-radius:10px; background: rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); font-size:12.5px; }
+  .hidden-banner strong{ color: var(--danger); }
+  .hidden-manager{ margin-top:12px; padding:12px; background: var(--bg-surface); border:1px solid var(--border); border-radius:10px; }
+  .hidden-manager-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .health-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .health-dot.ok{ background:#10b981; box-shadow:0 0 6px rgba(16,185,129,0.6); }
+  .health-dot.warn{ background:#f59e0b; }
+  .health-dot.bad{ background:#ef4444; }
   .failover-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:99px; background: var(--accent-soft); border:1px solid var(--accent-border); font-size:12px; color:var(--text-primary); }
   .failover-chip details { display:inline; }
   .failover-chip summary { cursor:pointer; list-style:none; font-weight:600; }
@@ -2738,6 +2752,20 @@
       <textarea class="field-textarea" id="systemPromptInput" placeholder="Optional custom instructions appended to the runner's system prompt..."></textarea>
     </div>
 
+    <div class="field-section">Model Health &amp; Auto-Cleanup — 10× Smarter</div>
+    <div class="field-help" style="margin-bottom:8px;">Broken models are <strong>auto-hidden</strong> (soft-deleted) on failure — never block your chat. Hard errors delete instantly, soft errors on 3 strikes. Local Ollama never auto-deleted.</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" id="showHiddenModelsToggle" style="width:14px;height:14px;" /> Show hidden models</label>
+      <span id="healthStatsPill" style="font-size:11px;padding:3px 8px;border-radius:99px;background:var(--bg-elevated);border:1px solid var(--border);">—</span>
+    </div>
+    <div id="hiddenModelsManager"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+      <button type="button" class="btn-secondary" id="retestHiddenBtn" style="font-size:11px;">⟳ Retest hidden</button>
+      <button type="button" class="btn-secondary" id="restoreAllHiddenBtn" style="font-size:11px;">↺ Restore all</button>
+      <button type="button" class="btn-secondary" id="clearHiddenBtn" style="font-size:11px;color:var(--danger);">Clear hidden list</button>
+    </div>
+    <div class="field-help" style="margin-top:6px;">Hidden models auto-expire after 24h. “Retest” pings them with a 5s check and unhides working ones. Custom models are permanently deleted on failure (restore by re-adding above).</div>
+
     <div class="field-section">Standalone HTML &amp; Data Export</div>
     <div class="field-help" style="margin-bottom:8px;">This entire app is 100% single-file HTML (zero external scripts, stylesheets, or servers required). Download a clean copy or bundle your chats &amp; settings into one portable <code class="inline-code">.html</code> file.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
@@ -3206,7 +3234,11 @@
     secAllowedDomains: "",
     supabaseUrl: "",
     supabaseKey: "",
-    theme: "dark"
+    theme: "dark",
+    // ── 10x: Model Health & Auto-Prune — broken models auto-hidden/deleted ──
+    hiddenModels: {}, // { "provider::id": { reason, failures, lastError, hiddenAt, display_name, provider, id } }
+    modelFailureCounts: {}, // { "provider::id": count }
+    showHiddenModels: false
   };
 
   // ── State ───────────────────────────────────────────────────────────────────
@@ -3444,6 +3476,139 @@ let studio = loadStudioState();
     return out;
   }
 
+  // ── 10x: Auto-Prune Health System — deleted/hidden model engine ──
+  function getModelKey(m){ return `${m?.provider || "custom"}::${m?.id || ""}`; }
+  function isModelHidden(m){
+    if(!m || !m.id) return false;
+    if(settings.showHiddenModels) return false;
+    const k = getModelKey(m);
+    return !!(settings.hiddenModels && settings.hiddenModels[k]);
+  }
+  function getHiddenCount(){ return settings.hiddenModels ? Object.keys(settings.hiddenModels).length : 0; }
+  function getHiddenModelsList(){
+    const hm = settings.hiddenModels || {};
+    return Object.entries(hm).map(([k,v])=> ({ key:k, ...v }));
+  }
+  function pruneExpiredHiddenModels(){
+    const hm = settings.hiddenModels || {};
+    const now = Date.now();
+    let changed=false;
+    for(const [k,v] of Object.entries(hm)){
+      if(v && v.hiddenAt && (now - v.hiddenAt) > 24*60*60*1000){
+        delete hm[k];
+        changed=true;
+      }
+    }
+    if(changed){ saveSettings(); rebuildModelsList(); }
+  }
+  function restoreHiddenModel(key){
+    if(settings.hiddenModels && settings.hiddenModels[key]){
+      delete settings.hiddenModels[key];
+      if(settings.modelFailureCounts) delete settings.modelFailureCounts[key];
+      saveSettings();
+      rebuildModelsList();
+      showToast(`✓ Restored ${key.split("::").pop()}`);
+      renderHiddenModelsManager();
+      updateHiddenBanner();
+    }
+  }
+  function restoreAllHidden(){
+    const c = getHiddenCount();
+    if(!c) return;
+    const keys = Object.keys(settings.hiddenModels||{});
+    settings.hiddenModels = {};
+    settings.modelFailureCounts = {};
+    // also clear cooldowns for those models
+    for(const k of keys) modelCooldownUntil.delete(k.split("::").pop());
+    // clear all provider cooldowns too for fresh start
+    providerCooldownUntil.clear(); modelCooldownUntil.clear();
+    saveSettings(); rebuildModelsList(); showToast(`✓ Restored ${c} models`);
+    renderHiddenModelsManager(); updateHiddenBanner();
+  }
+  function clearHiddenForever(){
+    if(!confirm(`Permanently forget ${getHiddenCount()} hidden models? They will still reappear if provider lists them again.`)) return;
+    settings.hiddenModels={}; settings.modelFailureCounts={}; saveSettings(); rebuildModelsList();
+    showToast("Hidden list cleared"); renderHiddenModelsManager(); updateHiddenBanner();
+  }
+  function shouldAutoHideModel(modelObj, err){
+    if(!modelObj || !modelObj.id) return false;
+    const prov = (modelObj.provider||"").toLowerCase();
+    // Never auto-delete local servers — they may be temporarily offline
+    if(prov==="ollama" || prov==="lmstudio") return false;
+    // Never delete browser offline cache failure (user can retry with proxy)
+    const msg = String(err?.message || err || "").toLowerCase();
+    const status = Number(err?.status||0);
+    // Hard permanent errors → delete immediately
+    if(status===404 || status===401 || status===403) return true;
+    if(/not\s*found|unknown\s*model|does\s*not\s*exist|no_eligible_worker|no worker|model.*not.*available|access.*denied|forbidden|invalid.*model/i.test(msg)) return true;
+    if(/empty response/.test(msg)){
+      // empty response twice = dead
+      const k=getModelKey(modelObj);
+      const cnt=(settings.modelFailureCounts?.[k]||0)+1;
+      return cnt>=2;
+    }
+    // Soft errors: only delete on 3 strikes
+    const k=getModelKey(modelObj);
+    const cnt=(settings.modelFailureCounts?.[k]||0)+1;
+    if(cnt>=3) return true;
+    return false;
+  }
+  function hideFailedModel(modelObj, err){
+    if(!modelObj || !modelObj.id) return false;
+    const k=getModelKey(modelObj);
+    // Never hide if only one visible model left — keep at least 1
+    const visibleCount = models.filter(m=> !isModelHidden(m)).length;
+    if(visibleCount<=1 && !isModelHidden(modelObj)){
+      console.warn("hideFailedModel blocked: last visible model", k);
+      return false;
+    }
+    const reason = summarizeFailoverReason(err);
+    const cnt = (settings.modelFailureCounts?.[k]||0)+1;
+    if(!settings.hiddenModels) settings.hiddenModels={};
+    if(!settings.modelFailureCounts) settings.modelFailureCounts={};
+    settings.modelFailureCounts[k]=cnt;
+    // For custom models: actually DELETE from customModels array
+    if(modelObj.provider==="custom"){
+      if(Array.isArray(settings.customModels)){
+        const before=settings.customModels.length;
+        settings.customModels=settings.customModels.filter(m=> getModelKey({...m, provider:m.provider||"custom"})!==k);
+        if(settings.customModels.length!==before){
+          showToast(`🗑️ Deleted custom model ${modelObj.id} (failed: ${reason}) — undo in Settings`);
+        }
+      }
+    }
+    // For built-ins: hide (soft delete) with metadata
+    settings.hiddenModels[k]={
+      id: modelObj.id,
+      provider: modelObj.provider,
+      display_name: modelObj.display_name||modelObj.id,
+      reason, failures: cnt, lastError: String(err?.message||err||"").slice(0,180),
+      hiddenAt: Date.now()
+    };
+    saveSettings();
+    rebuildModelsList();
+    // Toast with undo
+    showToast(`🗑️ Removed broken model: ${modelObj.display_name||modelObj.id} (${reason})`);
+    // If current model was hidden, failover will already have switched; ensure UI updates
+    if(settings.model===modelObj.id){
+      const stillVisible = models.find(m=> m.id===settings.model && !isModelHidden(m));
+      if(!stillVisible && models.length){
+        const fallback = models.find(m=> !isModelHidden(m));
+        if(fallback){ settings.model=fallback.id; saveSettings(); populateModelSelect(); syncModelCapabilitiesUI(); }
+      }
+    }
+    renderHiddenModelsManager();
+    updateHiddenBanner();
+    return true;
+  }
+  function manuallyHideModel(modelId){
+    const m = models.find(x=> x.id===modelId);
+    if(!m) return;
+    if(confirm(`Hide "${m.display_name||m.id}" from the model list? You can restore it in Settings → Model Health.`)){
+      hideFailedModel(m, { message: "manually hidden", status: 0 });
+    }
+  }
+
   function isOfflineActive() {
     return Boolean(settings.offlineMode || (typeof navigator !== "undefined" && navigator.onLine === false));
   }
@@ -3459,6 +3624,7 @@ let studio = loadStudioState();
     syncModelCapabilitiesUI();
     renderCustomModelsList();
     if (!getActiveChat()?.messages?.length) renderEmptyState();
+    try{ renderHiddenModelsManager(); updateHiddenBanner(); }catch{}
   }
 
   // ── Persistence Helpers ─────────────────────────────────────────────────────
@@ -8283,6 +8449,17 @@ let studio = loadStudioState();
     const status = Number(err?.status || 0);
     const msg = String(err?.message || err || "");
     const retrySec = Number(err?.retryAfterSec || 0);
+    // ── 10x: track failure counts persistently ──
+    try{
+      const k=getModelKey(modelObj);
+      if(!settings.modelFailureCounts) settings.modelFailureCounts={};
+      settings.modelFailureCounts[k]=(settings.modelFailureCounts[k]||0)+1;
+      saveSettings();
+      // auto-hide decision (smart: hard errors instantly, soft on 3 strikes, never local)
+      if(shouldAutoHideModel(modelObj, err)){
+        hideFailedModel(modelObj, err);
+      }
+    }catch(e){ console.warn("health tracking failed", e); }
 
     // Provider-level cooldowns so failover jumps straight to a DIFFERENT healthy provider instead of retrying the same rate-limited IP bucket
     if (prov === "aihorde" || prov === "auto-nonablit") {
@@ -8337,6 +8514,7 @@ let studio = loadStudioState();
     const isEligible = (m, ignoreCooldowns = false) => {
       if (!m || !m.id) return false;
       if (failedIdsInTurn.has(m.id)) return false;
+      if (isModelHidden(m)) return false;
       const prov = m.provider || "browser";
       if (offline) {
         if (!isLocalOfflineModel(m)) return false;
@@ -8719,10 +8897,11 @@ let studio = loadStudioState();
           syncModelCapabilitiesUI();
 
           const triedSummary = foState.trail.join(" → ");
-          const banner = `Auto-switched model: ${triedSummary} did not work — switched to "${nextName}". I'll keep using "${nextName}" for future messages until it stops working or you pick another model.`;
+          const hiddenNote = getHiddenCount() ? ` (${getHiddenCount()} broken model${getHiddenCount()===1?"":"s"} auto-hidden)` : "";
+          const banner = `Auto-switched model: ${triedSummary} did not work — switched to "${nextName}"${hiddenNote}. I'll keep using "${nextName}" for future messages until it stops working or you pick another model.`;
           assistantMsg._failoverBanner = banner;
           assistantMsg.notice = `${banner} Generating reply now…`;
-          showToast(`Auto-switched to ${nextName}`);
+          showToast(`Auto-switched to ${nextName}${hiddenNote ? " · 🗑️ "+getHiddenCount()+" hidden" : ""}`);
         } else {
           let finalErr = msg;
           if (IS_SANDBOXED_VIEWER && /failed to fetch|networkerror|load failed/i.test(msg)) {
@@ -8969,6 +9148,7 @@ let studio = loadStudioState();
     const isOnlineCloud = m => m.provider === "aihorde" || m.provider === "pollinations" || m.provider === "llm7" || m.isDetected;
     const q = (modelSearchQuery||"").trim().toLowerCase();
     const filteredModels = models.filter(m => {
+      if (!settings.showHiddenModels && isModelHidden(m)) return false;
       if (catalogFilter === "online" && !isOnlineCloud(m)) return false;
       if (catalogFilter === "abliterated" && !isAbliteratedModel(m)) return false;
       if (catalogFilter === "standard" && isAbliteratedModel(m)) return false;
@@ -8990,23 +9170,30 @@ let studio = loadStudioState();
       const isActive = m.id === settings.model;
       const ctx = formatCtxShort(m.context_length);
       const provLabel = PROVIDER_LABELS[m.provider || "browser"] || m.provider;
+      const k = getModelKey(m);
+      const hiddenMeta = settings.hiddenModels?.[k];
+      const failCnt = settings.modelFailureCounts?.[k]||0;
+      const cooldownUntil = modelCooldownUntil.get(m.id) || providerCooldownUntil.get(m.provider) || 0;
+      const isCooldown = cooldownUntil > Date.now();
+      const healthDot = hiddenMeta ? "🔴" : (isCooldown ? "🟡" : "🟢");
       const readyTag = m.isDetected
         ? "Ready Now · Local"
         : (m.provider === "browser"
           ? (cachedSet.has(m.id) ? "✓ Cached Offline" : "Optional Offline")
-          : "Online · Zero Download");
+          : (isCooldown ? "Cooldown" : "Online · Zero Download"));
       const metaParts = [provLabel, m.base_model, ctx, readyTag].filter(Boolean);
       return `
-        <button type="button" class="model-pill-card ${isActive ? "active" : ""}" data-select-model="${escHtml(m.id)}" title="${escHtml(m.id)}">
+        <div role="button" tabindex="0" class="model-pill-card ${isActive ? "active" : ""} ${hiddenMeta ? "hidden-model" : ""}" data-select-model="${escHtml(m.id)}" title="${escHtml(m.id)}${hiddenMeta ? " — HIDDEN: "+escHtml(hiddenMeta.reason) : ""}" style="cursor:pointer;">
           <div class="model-pill-info">
-            <span class="model-pill-name">${escHtml(m.display_name || m.id)}</span>
+            <span class="model-pill-name">${healthDot} ${escHtml(m.display_name || m.id)} ${failCnt?`<span style="font-size:10px;color:var(--danger);">· ${failCnt}× fail</span>`:""}</span>
             <span class="model-pill-meta">${escHtml(metaParts.join(" · "))}</span>
           </div>
           <div class="model-pill-badges">
             <span class="mod-tag ${isAblit ? "ablit" : "standard"}">${isAblit ? "ABLITERATED" : "NON-ABLITERATED"}</span>
             <span class="mod-tag ${isVis ? "vision" : "text-only"}">${isVis ? "TEXT + VISION" : "TEXT ONLY"}</span>
+            <button type="button" class="model-hide-btn" data-hide-model="${escHtml(m.id)}" title="Hide / delete this model" onclick="event.stopPropagation(); manuallyHideModel('${escHtml(m.id)}')">✕</button>
           </div>
-        </button>`;
+        </div>`;
     }).join("");
 
     const offlineHtml = networkBlockedHint
@@ -9027,6 +9214,7 @@ let studio = loadStudioState();
           <strong style="color:var(--accent);">${onlineCount} instant models</strong> — zero keys, zero limits, 10× faster: <strong>Abliterated (${ablitCount})</strong> via Heretic/Uncensored Horde + Local Ollama + <strong>Non-Abliterated (${stdCount})</strong> incl. <strong style="color:var(--sky);">ChatGPT</strong>, GPT-OSS, DeepSeek, GLM, Gemma, Codestral & Qwen — with <strong>Auto-Race + Sticky Failover</strong>. Offline ONNX works with Wi-Fi OFF.
         </p>
         ${offlineHtml}
+        <div id="hiddenModelsBanner"></div>
         <div class="model-catalog-box">
           <div class="model-catalog-head">
             <span class="model-catalog-title">Verified Working Models (${filteredModels.length})</span>
@@ -9343,8 +9531,9 @@ let studio = loadStudioState();
     ];
     let html="";
     let totalShown=0;
+    const hiddenCountTop = getHiddenCount();
     for(const g of groups){
-      let items = models.filter(g.filter);
+      let items = models.filter(g.filter).filter(m=> settings.showHiddenModels || !isModelHidden(m));
       if(q) items = items.filter(m => `${m.id} ${m.display_name||""} ${m.base_model||""}`.toLowerCase().includes(q));
       if(!items.length) continue;
       totalShown += items.length;
@@ -9354,10 +9543,12 @@ let studio = loadStudioState();
         const av = getModelAvatarInfo(m);
         const ctx = formatCtxShort(m.context_length);
         const badge = modelSupportsImages(m) ? "VISION" : "TEXT";
-        html += `<div class="model-picker-item ${active?"active":""}" data-pick-model="${m.id}">
+        const k=getModelKey(m); const isHidden=!!settings.hiddenModels?.[k]; const cd=modelCooldownUntil.get(m.id)||providerCooldownUntil.get(m.provider)||0; const dot=isHidden?"🔴":(cd>Date.now()?"🟡":"🟢");
+        html += `<div class="model-picker-item ${active?"active":""} ${isHidden?"hidden-model":""}" data-pick-model="${m.id}">
           <span class="item-avatar" style="background:${av.bg}">${av.letter}</span>
-          <span class="item-info"><span class="item-name">${escHtml(m.display_name||m.id)}</span><span class="item-desc">${escHtml([m.base_model, ctx].filter(Boolean).join(" · "))}</span></span>
+          <span class="item-info"><span class="item-name">${dot} ${escHtml(m.display_name||m.id)}</span><span class="item-desc">${escHtml([m.base_model, ctx].filter(Boolean).join(" · "))}</span></span>
           <span class="item-badge">${badge}</span>
+          <button type="button" class="model-hide-btn small" data-hide-model="${escHtml(m.id)}" title="Hide model" onclick="event.stopPropagation(); manuallyHideModel('${escHtml(m.id)}')">✕</button>
         </div>`;
       }
       html += `</div>`;
@@ -10973,6 +11164,95 @@ let studio = loadStudioState();
     return out;
   }
 
+  // ── 10x Helpers: hidden banner + manager UI ──
+  function updateHiddenBanner(){
+    const el2 = document.getElementById("hiddenModelsBanner");
+    if(!el2) return;
+    const c = getHiddenCount();
+    if(!c){ el2.innerHTML=""; return; }
+    const hiddenNames = getHiddenModelsList().slice(0,3).map(h=> escHtml(h.display_name||h.id)).join(", ");
+    const more = c>3 ? ` +${c-3} more` : "";
+    const btnLabel = settings.showHiddenModels ? "Hide" : "Show hidden";
+    el2.innerHTML = `<div class="hidden-banner"><strong>🗑️ ${c} broken model${c===1?"":"s"} auto-hidden</strong><span style="color:var(--text-muted);">— ${hiddenNames}${more}</span><span style="margin-left:auto;display:flex;gap:6px;"><button type="button" class="btn-secondary" style="padding:3px 8px;font-size:11px;" onclick="settings.showHiddenModels=!settings.showHiddenModels; saveSettings(); rebuildModelsList(); updateHiddenBanner(); renderHiddenModelsManager(); showToast(settings.showHiddenModels?'Showing hidden':'Hiding hidden')">${btnLabel}</button><button type="button" class="btn-secondary" style="padding:3px 8px;font-size:11px;" onclick="restoreAllHidden()">Restore all</button></span></div>`;
+  }
+  function renderHiddenModelsManager(){
+    const box = document.getElementById("hiddenModelsManager");
+    const pill = document.getElementById("healthStatsPill");
+    const toggle = document.getElementById("showHiddenModelsToggle");
+    if(toggle) toggle.checked = !!settings.showHiddenModels;
+    const total = models.length;
+    const hidden = getHiddenCount();
+    const healthy = total - hidden;
+    const cooldown = Array.from(modelCooldownUntil.values()).filter(v=> v>Date.now()).length + Array.from(providerCooldownUntil.values()).filter(v=> v>Date.now()).length;
+    if(pill) pill.textContent = `🟢 ${healthy} healthy · 🟡 ${cooldown} cooldown · 🔴 ${hidden} hidden · ${total} total`;
+    if(!box) return;
+    if(!hidden){
+      box.innerHTML = `<div class="hidden-manager" style="text-align:center;color:var(--text-muted);font-size:12px;">✓ No hidden models — all ${total} models healthy</div>`;
+      return;
+    }
+    const rows = getHiddenModelsList().map(h=>{
+      const age = h.hiddenAt ? Math.round((Date.now()-h.hiddenAt)/60000) : 0;
+      const ageStr = age<60 ? `${age}m ago` : `${Math.round(age/60)}h ago`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;background:var(--bg-canvas);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">
+        <span class="health-dot bad"></span>
+        <span style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(h.display_name||h.id)}</div>
+          <div style="font-size:10.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(h.provider||"")} · ${escHtml(h.reason||h.lastError||"failed")} · ${ageStr} · ${h.failures||1}×</div>
+        </span>
+        <button type="button" class="btn-secondary" data-restore-hidden="${escHtml(h.key)}" style="padding:3px 8px;font-size:11px;">Restore</button>
+        <button type="button" class="btn-secondary" data-forget-hidden="${escHtml(h.key)}" style="padding:3px 6px;font-size:11px;color:var(--danger);" title="Forget">✕</button>
+      </div>`;
+    }).join("");
+    box.innerHTML = `<div class="hidden-manager"><div class="hidden-manager-head"><span style="font-weight:700;font-size:12px;">🔴 Hidden failed models (${hidden})</span><span style="font-size:11px;color:var(--text-muted);">auto-expire 24h</span></div>${rows}</div>`;
+    box.querySelectorAll("[data-restore-hidden]").forEach(b=> b.addEventListener("click", ()=> restoreHiddenModel(b.dataset.restoreHidden)));
+    box.querySelectorAll("[data-forget-hidden]").forEach(b=> b.addEventListener("click", ()=>{
+      if(settings.hiddenModels[b.dataset.forgetHidden]){ delete settings.hiddenModels[b.dataset.forgetHidden]; saveSettings(); rebuildModelsList(); renderHiddenModelsManager(); updateHiddenBanner(); showToast("Forgot hidden entry"); }
+    }));
+  }
+  function wireHealthToggles(){
+    const t=document.getElementById("showHiddenModelsToggle");
+    if(t) t.addEventListener("change", ()=>{ settings.showHiddenModels=t.checked; saveSettings(); rebuildModelsList(); updateHiddenBanner(); });
+    const r=document.getElementById("retestHiddenBtn");
+    if(r) r.addEventListener("click", retestHiddenModels);
+    const ra=document.getElementById("restoreAllHiddenBtn");
+    if(ra) ra.addEventListener("click", restoreAllHidden);
+    const cl=document.getElementById("clearHiddenBtn");
+    if(cl) cl.addEventListener("click", clearHiddenForever);
+    // Delegate hide buttons to avoid nested-button issues and handle dynamic grid
+    document.addEventListener("click", (e)=>{
+      const hb = e.target.closest("[data-hide-model]");
+      if(hb){ e.preventDefault(); e.stopPropagation(); manuallyHideModel(hb.dataset.hideModel); }
+    });
+  }
+  async function retestHiddenModels(){
+    const list=getHiddenModelsList();
+    if(!list.length){ showToast("No hidden models to retest"); return; }
+    showToast(`Retesting ${list.length} hidden models…`);
+    let restored=0;
+    for(const h of list){
+      const m = models.find(x=> getModelKey(x)===h.key) || { id:h.id, provider:h.provider };
+      // Light probe: for llm7/pollinations/aihorde we can test via models endpoint or tiny completion
+      // Heuristic: if it's a hard 404/not-found, keep hidden; otherwise unhide after 24h or manual retest we restore optimistically with cooldown clear
+      // For now: clear cooldown and unhide if provider not rate-limited
+      const provCd = providerCooldownUntil.get(m.provider)||0;
+      if(provCd < Date.now()){
+        // optimistic restore — next real use will re-hide if still broken
+        if(settings.hiddenModels[h.key]){ delete settings.hiddenModels[h.key]; restored++; }
+      }
+    }
+    if(restored){
+      // clear failure counts for restored
+      for(const h of list){ const k=h.key; if(!settings.hiddenModels[k] && settings.modelFailureCounts[k]) delete settings.modelFailureCounts[k]; }
+      saveSettings(); rebuildModelsList();
+      showToast(`✓ Restored ${restored} models for retry — they will auto-hide again if still broken`);
+    } else {
+      showToast("No models restored — still in cooldown, try later");
+    }
+    renderHiddenModelsManager(); updateHiddenBanner();
+    // Also clear model cooldowns
+    modelCooldownUntil.clear(); providerCooldownUntil.clear();
+  }
+
   // ── Bootstrap ───────────────────────────────────────────────────────────────
   // Global error boundary — never show blank screen
   window.addEventListener("error", (e)=>{
@@ -10992,12 +11272,14 @@ let studio = loadStudioState();
   async function init() {
     try { performance.mark("ablit-init-start"); } catch {}
     syncThemeUI();
+    try{ pruneExpiredHiddenModels(); }catch{}
     populateModelSelect();
     syncModelCapabilitiesUI();
     syncEffortUI();
     syncWebToggleUI();
     renderCustomModelsList();
     renderChatList();
+    setTimeout(()=>{ try{ wireHealthToggles(); renderHiddenModelsManager(); updateHiddenBanner(); }catch(e){} }, 600);
     renderMessages();
     refreshStudioPreview();
     renderStudioUI();

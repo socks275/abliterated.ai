@@ -4099,7 +4099,7 @@
     }
     // Runtime shim: nuke frame-busters + proxy failing fetches via CORS proxies for auto-run cloned sites + powerful console forwarding
     const shim = `<script>/* abliterated.ai studio runtime — powerful console */
-(function(){try{const _l=console.log.bind(console),_w=console.warn.bind(console),_e=console.error.bind(console);function fwd(l,a){try{parent.postMessage({studioLog:{level:l,text:a.map(v=> typeof v==='object'?JSON.stringify(v):String(v)).join(' ')}},'*')}catch(e){}} console.log=function(){fwd('log',[...arguments]);return _l(...arguments)}; console.warn=function(){fwd('warn',[...arguments]);return _w(...arguments)}; console.error=function(){fwd('error',[...arguments]);return _e(...arguments)}}catch(e){}})();</script><script>/* abliterated.ai studio runtime — auto-run every script */
+(function(){try{const _l=console.log.bind(console),_w=console.warn.bind(console),_e=console.error.bind(console);function fwd(l,a){try{parent.postMessage({studioLog:{level:l,text:a.map(v=> typeof v==='object'?JSON.stringify(v):String(v)).join(' ')}},'*')}catch(e){}} console.log=function(){fwd('log',[...arguments]);return _l(...arguments)}; console.warn=function(){fwd('warn',[...arguments]);return _w(...arguments)}; console.error=function(){fwd('error',[...arguments]);return _e(...arguments)}}catch(e){}})();<\/script><script>/* abliterated.ai studio runtime — auto-run every script */
 (function(){
   try{
     Object.defineProperty(window,'top',{get:function(){return window;}, configurable:true});

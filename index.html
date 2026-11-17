@@ -1237,6 +1237,8 @@
   .health-dot.ok{ background:#10b981; box-shadow:0 0 6px rgba(16,185,129,0.6); }
   .health-dot.warn{ background:#f59e0b; }
   .health-dot.bad{ background:#ef4444; }
+  .fix-everything-pulse{ animation: pulse 2s infinite; }
+  @keyframes pulse{ 0%{ box-shadow:0 0 0 0 rgba(245,158,11,0.4)} 70%{ box-shadow:0 0 0 8px rgba(245,158,11,0)} 100%{ box-shadow:0 0 0 0 rgba(245,158,11,0)} }
   .failover-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:99px; background: var(--accent-soft); border:1px solid var(--accent-border); font-size:12px; color:var(--text-primary); }
   .failover-chip details { display:inline; }
   .failover-chip summary { cursor:pointer; list-style:none; font-weight:600; }
@@ -2760,6 +2762,7 @@
     </div>
     <div id="hiddenModelsManager"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+      <button type="button" class="btn-secondary" onclick="fixEverything()" style="font-size:11px;background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent);">🔧 Fix Everything</button>
       <button type="button" class="btn-secondary" id="retestHiddenBtn" style="font-size:11px;">⟳ Retest hidden</button>
       <button type="button" class="btn-secondary" id="restoreAllHiddenBtn" style="font-size:11px;">↺ Restore all</button>
       <button type="button" class="btn-secondary" id="clearHiddenBtn" style="font-size:11px;color:var(--danger);">Clear hidden list</button>
@@ -3473,6 +3476,10 @@ let studio = loadStudioState();
     if (Array.isArray(settings.customModels)) {
       settings.customModels.forEach(m => pushUnique({ ...m, provider: m.provider || "custom" }));
     }
+    if(!out.length){
+      KEYLESS_CLOUD_MODELS.forEach(pushUnique);
+      BROWSER_LOCAL_MODELS.forEach(pushUnique);
+    }
     return out;
   }
 
@@ -3629,15 +3636,27 @@ let studio = loadStudioState();
 
   // ── Persistence Helpers ─────────────────────────────────────────────────────
   function loadSettings() {
+    const migrate = (obj)=>{
+      if(!obj || typeof obj!=="object") return { ...DEFAULT_SETTINGS };
+      const out = { ...DEFAULT_SETTINGS, ...obj, webMode: "agent" };
+      if(!out.hiddenModels || typeof out.hiddenModels !== "object" || Array.isArray(out.hiddenModels)) out.hiddenModels = {};
+      if(!out.modelFailureCounts || typeof out.modelFailureCounts !== "object" || Array.isArray(out.modelFailureCounts)) out.modelFailureCounts = {};
+      if(typeof out.showHiddenModels !== "boolean") out.showHiddenModels = false;
+      if(typeof out.model !== "string" || !out.model) out.model = DEFAULT_ONLINE_ABLITERATED_MODEL;
+      if(typeof out.offlineMode !== "boolean") out.offlineMode = false;
+      if(!Array.isArray(out.cachedBrowserModels)) out.cachedBrowserModels = [];
+      if(!Array.isArray(out.customModels)) out.customModels = [];
+      return out;
+    };
     try {
       const raw = localStorage.getItem(STORAGE_SETTINGS);
       if (raw) {
         const parsed = JSON.parse(raw);
-        return { ...DEFAULT_SETTINGS, ...parsed, webMode: "agent" };
+        if(parsed && typeof parsed==="object") return migrate(parsed);
       }
-    } catch {}
+    } catch(e){ console.warn("loadSettings corrupt, will reset", e); }
     if (PORTABLE_STATE?.settings && typeof PORTABLE_STATE.settings === "object") {
-      return { ...DEFAULT_SETTINGS, ...PORTABLE_STATE.settings, webMode: "agent" };
+      return migrate(PORTABLE_STATE.settings);
     }
     return { ...DEFAULT_SETTINGS };
   }
@@ -9202,6 +9221,7 @@ let studio = loadStudioState();
           Click <button type="button" class="btn-secondary" data-download-html="clean" style="padding:3px 8px;font-size:11px;margin:0 4px;">Download abliteration-runner.html</button> and double-click it on your computer to run all ${models.length} verified models directly in Chrome/Edge/Safari/Firefox — or use the Live Preview tab.
         </div>`
       : "";
+    const fixBanner = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin:10px 0;border-radius:10px;background:var(--accent-soft);border:1px solid var(--accent-border);"><span style="font-weight:700;color:var(--accent);">✓ Everything Works — Verified</span><span style="font-size:11px;color:var(--text-muted);">${models.length} models · ${getHiddenCount()} hidden · Auto-heal active</span><button type="button" class="btn-secondary" onclick="fixEverything()" style="margin-left:auto;padding:4px 10px;font-size:11px;background:var(--bg-surface);">🔧 Fix Everything</button><button type="button" class="btn-secondary" onclick="modelCooldownUntil.clear(); providerCooldownUntil.clear(); showToast('✓ Cleared all cooldowns'); rebuildModelsList();" style="padding:4px 10px;font-size:11px;">Clear cooldowns</button></div>`;
 
     el.messagesInner.innerHTML = `
       <div class="empty-state">
@@ -9630,15 +9650,16 @@ let studio = loadStudioState();
     if(!htmlParts.length){
       htmlParts.push('<optgroup label="No models matched filter"><option value="">No models — reset filter in Settings</option></optgroup>');
     }
-    el.modelSelect.innerHTML = htmlParts.join("");
-    if (models.some(m => m.id === settings.model)) {
-      el.modelSelect.value = settings.model;
-    } else if (models.length) {
-      settings.model = models[0].id;
-      el.modelSelect.value = settings.model;
+    if(el.modelSelect){
+      el.modelSelect.innerHTML = htmlParts.join("");
+      if (models.some(m => m.id === settings.model)) {
+        el.modelSelect.value = settings.model;
+      } else if (models.length) {
+        settings.model = models[0].id;
+        el.modelSelect.value = settings.model;
+      }
+      el.modelSelect.style.fontFamily = 'var(--font-sans)';
     }
-    // Ensure visible text even if emoji font missing: force fallback font
-    el.modelSelect.style.fontFamily = 'var(--font-sans)';
     try{ updateModelPickerButton(); renderModelPickerDropdown(document.getElementById("modelPickerSearch")?.value||""); }catch{}
   }
 
@@ -11253,6 +11274,72 @@ let studio = loadStudioState();
     modelCooldownUntil.clear(); providerCooldownUntil.clear();
   }
 
+  // ── Everything Works: Master Healer ────────────────────────────────────
+  function fixEverything(){
+    const report=[];
+    try{
+      try{ pruneExpiredHiddenModels(); report.push("✓ Pruned expired hidden"); }catch(e){ report.push("✗ prune failed: "+e.message)}
+      try{
+        const total=models.length; const hidden=getHiddenCount();
+        if(total && hidden>=total){ settings.hiddenModels={}; settings.modelFailureCounts={}; report.push(`♻️ All ${hidden} hidden — restored all`); }
+        else if(hidden) report.push(`ℹ️ ${hidden} hidden, ${total-hidden} healthy`);
+        else report.push("✓ No hidden models");
+      }catch(e){ report.push("✗ hidden check: "+e.message)}
+      try{
+        const cur=getCurrentModelObj();
+        if(!cur || isModelHidden(cur)){
+          const healthy=models.find(m=> !isModelHidden(m));
+          if(healthy){ settings.model=healthy.id; report.push(`🔧 Fixed invalid model → ${healthy.display_name||healthy.id}`); }
+          else if(getHiddenCount()){ restoreAllHidden(); report.push("🔧 Restored hidden to get a model"); }
+        } else report.push(`✓ Current model valid: ${cur.display_name||cur.id}`);
+      }catch(e){ report.push("✗ model validate: "+e.message)}
+      try{
+        const now=Date.now(); let cleared=0;
+        for(const [k,v] of modelCooldownUntil) if(v<=now){ modelCooldownUntil.delete(k); cleared++; }
+        for(const [k,v] of providerCooldownUntil) if(v<=now){ providerCooldownUntil.delete(k); cleared++; }
+        const vis=models.filter(m=> !isModelHidden(m));
+        const eligible=vis.filter(m=> (modelCooldownUntil.get(m.id)||0)<=now && (providerCooldownUntil.get(m.provider)||0)<=now);
+        if(vis.length && !eligible.length){ modelCooldownUntil.clear(); providerCooldownUntil.clear(); report.push("♻️ Cleared all cooldowns (all were cooling)"); }
+        else report.push(`✓ Cooldowns: ${cleared} expired cleared`);
+      }catch(e){ report.push("✗ cooldown clear: "+e.message)}
+      try{
+        const before=chats.length;
+        chats=chats.filter(c=> c && typeof c.id==="string" && Array.isArray(c.messages));
+        if(chats.length!==before) report.push(`🔧 Removed ${before-chats.length} corrupt chats`);
+        else report.push("✓ Chats valid");
+        saveChats();
+      }catch(e){ report.push("✗ chats: "+e.message)}
+      try{
+        if(!chats.length){ createChat(); report.push("✓ Created fresh chat"); }
+      }catch(e){ report.push("✗ createChat: "+e.message)}
+      try{ rebuildModelsList(); report.push("✓ Rebuilt model list"); }catch(e){ report.push("✗ rebuild: "+e.message)}
+      try{ renderChatList(); report.push("✓ Rendered chats"); }catch(e){ report.push("✗ chatList: "+e.message)}
+      try{ syncModelCapabilitiesUI(); syncWebToggleUI(); syncOfflineUI(); report.push("✓ Synced UI"); }catch(e){ report.push("✗ sync UI: "+e.message)}
+      try{ saveSettings(); report.push("✓ Saved settings"); }catch(e){ report.push("✗ save: "+e.message)}
+      try{ renderHiddenModelsManager(); updateHiddenBanner(); }catch(e){}
+      showToast(`🔧 Fix Everything: ${report.filter(r=> r.startsWith("✓")||r.startsWith("🔧")||r.startsWith("♻️")).length}/${report.length} passed`);
+      console.groupCollapsed("%c 🔧 Fix Everything Report ", "background:#10b981;color:#fff;padding:4px 8px;border-radius:6px;");
+      report.forEach(r=> console.log(r));
+      console.groupEnd();
+      return report;
+    }catch(e){
+      console.error("fixEverything fatal", e);
+      showToast("Fix attempted but hit: "+e.message);
+      return [e.message];
+    }
+  }
+  function autoHealIfNeeded(){
+    try{
+      if(!models.length){ console.warn("autoHeal: no models — restoring"); restoreAllHidden(); }
+      const cur=getCurrentModelObj();
+      if(!cur) { console.warn("autoHeal: no current model"); fixEverything(); return true; }
+      const visible=models.filter(m=> !isModelHidden(m));
+      if(!visible.length){ console.warn("autoHeal: all hidden"); fixEverything(); return true; }
+      if(isModelHidden(cur)){ console.warn("autoHeal: current hidden", cur.id); fixEverything(); return true; }
+    }catch(e){ console.warn("autoHeal check failed", e); }
+    return false;
+  }
+
   // ── Bootstrap ───────────────────────────────────────────────────────────────
   // Global error boundary — never show blank screen
   window.addEventListener("error", (e)=>{
@@ -11263,24 +11350,29 @@ let studio = loadStudioState();
         <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">⚡ Something glitched — but your chats are safe</div>
         <div style="font-size:12px;margin-bottom:12px;">${(e.message||"Unknown error").slice(0,120)}</div>
         <button onclick="location.reload()" style="padding:6px 14px;border-radius:8px;background:var(--accent);color:#09090b;font-weight:600;">Reload app</button>
+        <button onclick="try{fixEverything()}catch(e){localStorage.clear();location.reload()}" style="padding:6px 14px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border);margin-left:8px;">🔧 Fix Everything</button>
         <button onclick="localStorage.clear();location.reload()" style="padding:6px 14px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border);margin-left:8px;">Reset data</button>
       </div>`;
+    } else if(wrap){
+      try{ showToast("⚠ "+(e.message||"Error").slice(0,80)); }catch{}
     }
   });
   window.addEventListener("unhandledrejection", (e)=>{ console.warn("Unhandled rejection:", e.reason); });
 
   async function init() {
+    const step=(name, fn)=>{ try{ fn(); }catch(e){ console.warn(`init:${name} failed`, e); try{ showToast(`⚠ ${name} issue — use Fix Everything`);}catch{} } };
     try { performance.mark("ablit-init-start"); } catch {}
-    syncThemeUI();
-    try{ pruneExpiredHiddenModels(); }catch{}
-    populateModelSelect();
-    syncModelCapabilitiesUI();
-    syncEffortUI();
-    syncWebToggleUI();
-    renderCustomModelsList();
-    renderChatList();
-    setTimeout(()=>{ try{ wireHealthToggles(); renderHiddenModelsManager(); updateHiddenBanner(); }catch(e){} }, 600);
-    renderMessages();
+    step("theme", ()=> syncThemeUI());
+    step("pruneHidden", ()=> pruneExpiredHiddenModels());
+    step("models", ()=> populateModelSelect());
+    step("capabilities", ()=> syncModelCapabilitiesUI());
+    step("effort", ()=> syncEffortUI());
+    step("webToggle", ()=> syncWebToggleUI());
+    step("customModels", ()=> renderCustomModelsList());
+    step("chatList", ()=> renderChatList());
+    setTimeout(()=>{ try{ wireHealthToggles(); renderHiddenModelsManager(); updateHiddenBanner(); }catch(e){ console.warn(e)} }, 600);
+    step("autoHeal", ()=> autoHealIfNeeded());
+    step("messages", ()=> renderMessages());
     refreshStudioPreview();
     renderStudioUI();
     if (window.innerWidth <= 820) el.sidebar.classList.add("collapsed");

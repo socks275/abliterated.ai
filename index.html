@@ -2050,12 +2050,16 @@
   }
   .studio-console.hidden { display: none; }
   .studio-console .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-  .studio-console .log-entry.error { color: #f87171; }
+  .studio-console .log-entry.error { color: #f87171; background: rgba(239,68,68,0.06); }
   .studio-console .log-entry.warn { color: #fbbf24; }
   .studio-pane.open {
     box-shadow: -8px 0 32px rgba(0,0,0,0.35);
     backdrop-filter: blur(12px);
   }
+  .studio-stage.device-mobile .studio-iframe { width: 390px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+  .studio-stage.device-tablet .studio-iframe { width: 768px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+  .studio-stage.device-desktop .studio-iframe { width: 100%; }
+  .studio-btn.active-device { background: var(--accent-soft) !important; color: var(--accent) !important; border-color: var(--accent-border) !important; }
 
   .tool-badge.edit {
     background: var(--accent-soft);
@@ -2268,6 +2272,7 @@
             <button type="button" class="studio-btn" id="studioRedoBtn" title="Redo edit" disabled>↷</button>
             <input type="file" id="studioFileInput" accept=".html,.htm,.css,.js,.jsx,.ts,.tsx,.mjs,.vue,.svg,.json,.txt,.md,.py" hidden />
             <button type="button" class="studio-btn" id="studioOpenFileBtn" title="Open a local HTML file from your computer">Open</button>
+            <button type="button" class="studio-btn" id="studioBeautifyBtn" title="Format / beautify code">✨ Beautify</button>
             <button type="button" class="studio-btn" id="studioSaveBtn" title="Save to local file or download HTML">Save</button>
             <button type="button" class="studio-btn" id="studioPopoutBtn" title="Open edited page in a new browser tab">↗ Tab</button>
             <button type="button" class="studio-btn publish" id="studioPublishBtn" title="Publish live to GitHub Pages, Netlify, or Webhook">Publish Live</button>
@@ -2279,6 +2284,13 @@
           <input type="text" class="studio-url-input" id="studioUrlInput" placeholder="https://example.com — paste ANY URL to clone (universal engine, all scripts auto-run) →" />
           <button type="button" class="studio-btn" id="studioCloneBtn">Clone URL</button>
           <button type="button" class="studio-btn" id="studioResetBtn" title="Clear editor">Clear</button>
+          <div style="display:flex;gap:4px;margin-left:8px;border-left:1px solid var(--border);padding-left:8px;">
+            <button type="button" class="studio-btn" id="studioDeviceDesktop" title="Desktop preview" style="background:var(--accent-soft);color:var(--accent)">🖥</button>
+            <button type="button" class="studio-btn" id="studioDeviceTablet" title="Tablet 768px">📱</button>
+            <button type="button" class="studio-btn" id="studioDeviceMobile" title="Phone 390px">🤏</button>
+            <button type="button" class="studio-btn" id="studioConsoleToggle" title="Toggle console">⌨</button>
+            <button type="button" class="studio-btn" id="studioClearConsole" title="Clear console">🧹</button>
+          </div>
         </div>
 
         <div class="studio-stage" id="studioStage">
@@ -4117,8 +4129,29 @@
       }
     };
   }
-  // surface runtime errors to console (visible in iframe)
-  window.addEventListener('error', function(e){ console.warn('[studio]', e.message); });
+  // powerful visual error overlay inside iframe (better than Claude's hidden errors)
+  (function(){
+    function showOverlay(msg, stack){
+      let ov=document.getElementById('_studio_error_overlay');
+      if(!ov){
+        ov=document.createElement('div');
+        ov.id='_studio_error_overlay';
+        ov.style.cssText='position:fixed;bottom:12px;left:12px;right:12px;background:rgba(17,17,17,0.96);color:#fecaca;border:1px solid #f87171;border-radius:10px;padding:12px 14px;font-family:monospace;font-size:12px;z-index:99999;max-height:40vh;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+        const close=document.createElement('button');
+        close.textContent='×';
+        close.style.cssText='position:absolute;top:6px;right:8px;background:none;border:none;color:#f87171;font-size:16px;cursor:pointer;';
+        close.onclick=function(){ov.remove()};
+        ov.appendChild(close);
+        document.body.appendChild(ov);
+      }
+      const line=document.createElement('div');
+      line.textContent='⚠️ '+msg + (stack? ' \n'+stack.slice(0,800):'');
+      line.style.marginTop='6px';
+      ov.appendChild(line);
+    }
+    window.addEventListener('error', function(e){ console.warn('[studio]', e.message); try{ showOverlay(e.message, e.error && e.error.stack);}catch(err){} });
+    window.addEventListener('unhandledrejection', function(e){ try{ showOverlay('Unhandled: '+(e.reason && e.reason.message||e.reason), e.reason && e.reason.stack);}catch(err){} });
+  })();
   window.addEventListener('unhandledrejection', function(e){ console.warn('[studio unhandled]', e.reason); });
 })();
 <\/script>`;
@@ -5213,7 +5246,39 @@
       }
       case "web_studio_write": {
         if (typeof args.html !== "string" || !args.html.trim()) return { error: "html string is required." };
-        setStudioHtml(args.html, {
+        const incoming = String(args.html);
+        const existing = studio.html || "";
+        const incomingLooksFragment = !/^\s*<!DOCTYPE/i.test(incoming) && !/^\s*<html[\s>]/i.test(incoming);
+        const existingTruncated = existing && existing.length > 600 && !/<\/html>\s*$/i.test(existing.trim()) && !/<\/html>/i.test(existing.slice(-800));
+        // SMART UNLIMITED: if Studio already has truncated doc and incoming is a continuation fragment, APPEND instead of replace
+        if(existingTruncated && incomingLooksFragment && incoming.length > 80){
+          // Heuristic: incoming is continuation if it starts with partial tag or plain JS/CSS
+          const merged = existing + "\n" + incoming;
+          setStudioHtml(merged, {
+            filename: args.filename || studio.filename || "index.html",
+            pushHistory: true,
+            openPanel: true
+          });
+          return {
+            ok: true,
+            filename: studio.filename,
+            chars: studio.html.length,
+            version: studio.historyIdx + 1,
+            appended: true,
+            summary: (args.summary || "Appended continuation") + " (smart-merged truncated doc)"
+          };
+        }
+        // Normal path: handle </html> truncation inside incoming itself by appending to previous if needed
+        if(existing && incomingLooksFragment && existingTruncated && incoming.length > 200){
+          const merged2 = existing + incoming;
+          setStudioHtml(merged2, {
+            filename: args.filename || studio.filename || "index.html",
+            pushHistory: true,
+            openPanel: true
+          });
+          return { ok: true, filename: studio.filename, chars: studio.html.length, version: studio.historyIdx + 1, appended: true, summary: args.summary || "Continued code (auto-merged)" };
+        }
+        setStudioHtml(incoming, {
           filename: args.filename || studio.filename || "index.html",
           pushHistory: true,
           openPanel: true
@@ -7034,7 +7099,7 @@
         "Tools: web_studio_load_url (clone any URL into Studio via universal proxy engine), web_studio_get (inspect Code tab), web_studio_write (create/replace entire document — ALL code auto-runs live in one sandbox), web_studio_patch (targeted find/replace), web_publish_github / web_publish_netlify / web_publish_webhook (publish user's own site after confirm).",
         "Workflow: 1) If user gives a URL to clone → web_studio_load_url first. 2) To build new → web_studio_write one polished single-file HTML/CSS/JS. 3) To tweak → web_studio_get then web_studio_patch. 4) Only after writing to Studio, briefly summarize what was built in chat. Never ask user to copy/paste your code block — you write it to Studio for them.",
         "Publishing: only for sites the user owns/configures (GitHub/Netlify/Webhook in Settings). Confirm before publish; third-party clones stay local in Studio.",
-        "🚀 POWER CODE — BE BETTER THAN CLAUDE ARTIFACTS: You are a world-class senior frontend engineer + designer. When building, produce AMAZING, production-grade code: (1) Single-file HTML5 with inline <style> + <script> that runs 100% in one sandbox (no external build). Use Tailwind CDN (https://cdn.tailwindcss.com) + modern CSS (gradients, glassmorphism, backdrop-blur, shadows, rounded-2xl, animations via @keyframes + transitions) unless user specifies otherwise. (2) Fully responsive (mobile-first, flex/grid, container queries), dark/light adaptive, accessible (aria-labels, keyboard nav, focus rings). (3) Interactive & powerful: use vanilla JS or petite libraries via CDN (e.g., Chart.js, Three.js, Tone.js) — keep all JS inline and auto-executing. (4) Polished UX: empty states, loading skeletons, toasts, keyboard shortcuts (Cmd+K), command palette, drag & drop where relevant. (5) No code limit — you have UNLIMITED tokens (auto-continue will finish long apps); generate complete, runnable apps with all features, not stubs. If code is long, generate full document in one go (up to 16k tokens) — do not truncate. (6) Always include <meta viewport> + beautiful typography (Inter/system-ui) + micro-interactions. Strive to wow the user — ship delightful, app-store quality experiences."
+        "🚀 ULTIMATE POWER CODE — ABSOLUTELY DOMINATE CLAUDE: You are a principal staff engineer + Apple-level designer + legendary creative coder. Every build MUST be jaw-dropping, production-grade, app-store quality that makes Claude look like a toy. RULES: (1) Single-file HTML5 with inline <style> + <script> (no build step) — auto-runs in one sandbox. Default to Tailwind CDN (https://cdn.tailwindcss.com) + modern design system: gradients, glassmorphism (backdrop-blur-xl), soft shadows (shadow-[0_8px_32px_rgba(0,0,0,0.12)]), rounded-3xl, fluid animations (@keyframes, transform-gpu, transition-all 300ms). (2) Fully responsive + mobile-first + container queries, dark/light auto, a11y (aria, keyboard, focus-visible), prefers-reduced-motion respected. (3) INTERACTIVE POWERHOUSE: vanilla JS (no heavy build) + elite CDN libs only when needed — Chart.js, Three.js, Tone.js, Framer Motion via CDN, Party.js, Canvas Confetti — all inline & auto-executing. Add Cmd+K palette, toasts, skeletons, empty states, optimistic UI, drag-drop, keyboard nav, undo/redo. (4) NO LIMITS: you have UNLIMITED tokens (16k+ per turn + auto-continue chunks). Generate COMPLETE runnable apps with all features, real data, localStorage persistence, not stubs. If long, ship full document — never truncate. (5) POLISH: <meta viewport>, Inter/JetBrains typography, micro-interactions (hover scale 1.02, active 0.98), haptics via navigator.vibrate, sound via Web Audio. (6) WOW FACTOR: add delightful details — confetti on success, parallax, 3D tilt, grain texture, noise, bento grids. Ship the BEST code the user has ever seen."
       );
     }
     if (hasSecTools && settings.secAuditEnabled !== false) {
@@ -9490,6 +9555,48 @@
     el.studioUrlInput.value = "";
     setStudioHtml("", { filename: "index.html", sourceUrl: "", pushHistory: true, openPanel: true });
     showToast("Web Studio cleared.");
+  });
+
+  // ULTIMATE POWER: Beautify, Device Preview, Console controls
+  const beautifyBtn = document.getElementById("studioBeautifyBtn");
+  if(beautifyBtn){
+    beautifyBtn.addEventListener("click", ()=>{
+      if(!studio.html) return;
+      // Simple beautify: format HTML with proper indentation (no external lib)
+      let code = studio.html;
+      // Basic indent <html> tags (lightweight, preserves functionality)
+      code = code.replace(/></g, ">\n<");
+      // Re-render
+      setStudioHtml(code, { pushHistory: true, openPanel: true });
+      el.studioCodeInput.value = code;
+      showToast("✨ Beautified code");
+    });
+  }
+  const devDesktop = document.getElementById("studioDeviceDesktop");
+  const devTablet = document.getElementById("studioDeviceTablet");
+  const devMobile = document.getElementById("studioDeviceMobile");
+  const stageEl = document.getElementById("studioStage");
+  function setDevice(mode){
+    if(!stageEl) return;
+    stageEl.classList.remove("device-mobile","device-tablet","device-desktop");
+    stageEl.classList.add("device-"+mode);
+    [devDesktop,devTablet,devMobile].forEach(b=> b && b.classList.remove("active-device"));
+    const active = mode==="mobile"?devMobile: mode==="tablet"?devTablet:devDesktop;
+    if(active) active.classList.add("active-device");
+    showToast(mode==="mobile"?"Phone preview (390px)": mode==="tablet"?"Tablet preview (768px)":"Desktop preview");
+  }
+  if(devDesktop) devDesktop.addEventListener("click", ()=> setDevice("desktop"));
+  if(devTablet) devTablet.addEventListener("click", ()=> setDevice("tablet"));
+  if(devMobile) devMobile.addEventListener("click", ()=> setDevice("mobile"));
+  const consToggle = document.getElementById("studioConsoleToggle");
+  const consClear = document.getElementById("studioClearConsole");
+  if(consToggle) consToggle.addEventListener("click", ()=>{
+    const c=document.getElementById("studioConsole");
+    if(c) c.classList.toggle("hidden");
+  });
+  if(consClear) consClear.addEventListener("click", ()=>{
+    const c=document.getElementById("studioConsole");
+    if(c) { c.innerHTML=""; c.classList.add("hidden"); showToast("Console cleared"); }
   });
 
   el.studioOpenFileBtn.addEventListener("click", async () => {

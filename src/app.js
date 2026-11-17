@@ -5927,7 +5927,7 @@ let studio = loadStudioState();
       return (contentOnly = false) => {
         if (!contentOnly) needsFull = true;
         if (timer || rafId) return;
-        const elapsed = performance.now() - lastPaintAt - (msg.reasoning ? 0 : 0);
+        const elapsed = performance.now() - lastPaintAt - (assistantMsg.reasoning ? 0 : 0);
         if (elapsed >= 32) {
           rafId = requestAnimationFrame(flush);
         } else {

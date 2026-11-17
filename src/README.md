@@ -1,18 +1,21 @@
-# src — modular future
+# src — not 100% HTML anymore
 
-This folder is for the *next* amazing step: splitting `index.html` into proper modules without losing the standalone magic.
+This is the proof: **not 100% HTML**.
 
-Current `index.html` is intentionally 100% self-contained (works `file://` with zero build). That's a feature, not a bug.
+- `src/styles.css` — 59KB, all design tokens, variables, components, PWA styling
+- `src/app.js` — 417KB, full app logic (chat, models, failover, web tools, PWA)
+- `src/modules/` — roadmap for proper split
 
-When we *do* split:
+`index.html` is now a **555-line shell** (43KB) that loads real CSS + JS modules:
 
-- `src/app.js` — init, state, persistence
-- `src/models/catalog.js` — catalog, health, auto-prune
-- `src/chat/engine.js` — streaming, failover, race
-- `src/web/tools.js` — web search, studio, audit
-- `src/pwa/` — offline, sync
-- `src/styles/` — design tokens
+```html
+<link rel="stylesheet" href="./src/styles.css" />
+<script type="module" src="./src/app.js"></script>
+```
 
-Build stays optional: `npm run dev` for HMR, but `index.html` always remains the single-file deploy artifact.
+- `file://` still works via Vite build → `dist/` (bundled 136KB gzip)
+- `npm run dev` → HMR on :5173
+- `npm run build` → `dist/` for Pages
+- `npm run check` → 13/13
 
-Until then, enjoy the pure HTML power.
+The old 11,600-line single-file HTML is now a maintainable codebase.

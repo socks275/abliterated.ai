@@ -2035,6 +2035,27 @@
     color: var(--web);
     text-decoration: underline;
   }
+  .studio-console {
+    max-height: 120px;
+    overflow-y: auto;
+    background: #0a0a0f;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 8px 12px;
+    color: #a1a1aa;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .studio-console.hidden { display: none; }
+  .studio-console .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .studio-console .log-entry.error { color: #f87171; }
+  .studio-console .log-entry.warn { color: #fbbf24; }
+  .studio-pane.open {
+    box-shadow: -8px 0 32px rgba(0,0,0,0.35);
+    backdrop-filter: blur(12px);
+  }
 
   .tool-badge.edit {
     background: var(--accent-soft);
@@ -2271,20 +2292,21 @@
             id="studioCodeInput"
             class="studio-code-editor"
             spellcheck="false"
-            placeholder="Paste any code here — HTML, CSS, JS, React/Vue, SVG... all auto-runs live"
+            placeholder="Power Studio — paste ANY code (HTML, Tailwind, React, Vue, Three.js, Python...) — all auto-runs live in one sandbox ✨"
           ></textarea>
           <div class="studio-empty-overlay" id="studioEmptyOverlay">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-            <div style="font-weight:700;font-size:15px;color:var(--text-primary);">Live Web Editor Studio</div>
+            <div style="font-weight:700;font-size:15px;color:var(--text-primary);">⚡ Power Studio — Unlimited Code</div>
             <div style="font-size:12.5px;max-width:340px;line-height:1.55;">
-              Ask the AI to <strong>build a website</strong>, <strong>clone &amp; redesign any URL</strong>, or open a local <code class="inline-code">.html</code> file — edits render live here and can be saved locally or published straight to <strong>GitHub Pages</strong>, <strong>Netlify</strong>, or your <strong>Webhook/CMS</strong>.
+              Ask the AI to <strong>build anything</strong> — apps, games, dashboards, clones — <strong>any framework</strong>, or open a <code class="inline-code">.html</code> file — edits render live here and can be saved locally or published straight to <strong>GitHub Pages</strong>, <strong>Netlify</strong>, or your <strong>Webhook/CMS</strong>.
             </div>
           </div>
         </div>
 
+        <div id="studioConsole" class="studio-console hidden"></div>
         <div class="studio-status">
           <span id="studioStatusLeft">No page loaded</span>
-          <span id="studioStatusRight">Ready · AI edit tools active</span>
+          <span id="studioStatusRight">Ready · Powerful Code · Unlimited</span>
         </div>
       </section>
     </div>
@@ -2862,6 +2884,31 @@
   const DEFAULT_CLOUD_MODEL = KEYLESS_CLOUD_MODELS[0].id; // "openai" (ChatGPT · Pollinations Keyless Cloud)
   const DEFAULT_ONLINE_ABLITERATED_MODEL = AIHORDE_SEED_MODELS[0].id; // Live AI Horde Online Abliterated/Uncensored
 
+  // POWER: Best coding model for unlimited code (bypasses Horde 512 cap, uses high-limit LLMs)
+  function getBestCodeModel(){
+    // Prefer true coding specialists with huge context & high max_completion_tokens
+    const pool = (typeof KEYLESS_CLOUD_MODELS !== 'undefined' ? KEYLESS_CLOUD_MODELS : []).concat(typeof aiHordeLiveModels !== 'undefined' ? aiHordeLiveModels : []);
+    const ranked = [
+      "codestral-latest",
+      "DeepSeek-V4-Flash-0731",
+      "glm-5.3-flash",
+      "gpt-oss:120b",
+      "openai",
+      "gpt-oss:20b",
+      "gemma4:31b",
+      "mimo-v2.6-flash"
+    ];
+    for(const want of ranked){
+      const m = pool.find(x=> x.id===want || x.id.toLowerCase()===want.toLowerCase());
+      if(m) return m;
+    }
+    // Fallback: any llm7/pollinations with max_completion_tokens >= 2048 or missing (means large)
+    const fallback = pool.find(m=> (m.provider==="llm7" || m.provider==="pollinations") && (Number(m.max_completion_tokens||8192) >= 2048));
+    if(fallback) return fallback;
+    // Last resort: any model with context_length > 32000
+    return pool.find(m=> Number(m.context_length||0) > 32000) || pool[0] || null;
+  }
+
   function inferModelCategory(modelObj) {
     if (!modelObj) return "standard";
     if (modelObj.category === "abliterated" || modelObj.category === "standard") return modelObj.category;
@@ -2901,7 +2948,7 @@
     webMode: "agent",
     maxToolRounds: 6,
     temperature: 0.7,
-    maxTokens: 4096,
+    maxTokens: 16384, // unlimited power: default 16k, UI allows up to 262k
     systemPrompt: "",
     webEditorEnabled: true,
     ghRepo: "",
@@ -4035,8 +4082,9 @@
         out = `<!DOCTYPE html>\n<html><head><meta charset="UTF-8">${baseTag}</head><body>\n${out}\n</body></html>`;
       }
     }
-    // Runtime shim: nuke frame-busters + proxy failing fetches via CORS proxies for auto-run cloned sites
-    const shim = `<script>/* abliterated.ai studio runtime — auto-run every script */
+    // Runtime shim: nuke frame-busters + proxy failing fetches via CORS proxies for auto-run cloned sites + powerful console forwarding
+    const shim = `<script>/* abliterated.ai studio runtime — powerful console */
+(function(){try{const _l=console.log.bind(console),_w=console.warn.bind(console),_e=console.error.bind(console);function fwd(l,a){try{parent.postMessage({studioLog:{level:l,text:a.map(v=> typeof v==='object'?JSON.stringify(v):String(v)).join(' ')}},'*')}catch(e){}} console.log=function(){fwd('log',[...arguments]);return _l(...arguments)}; console.warn=function(){fwd('warn',[...arguments]);return _w(...arguments)}; console.error=function(){fwd('error',[...arguments]);return _e(...arguments)}}catch(e){}})();</script><script>/* abliterated.ai studio runtime — auto-run every script */
 (function(){
   try{
     Object.defineProperty(window,'top',{get:function(){return window;}, configurable:true});
@@ -4320,6 +4368,22 @@
     if (!el.studioPreviewFrame) return;
     el.studioPreviewFrame.srcdoc = studio.html || "";
   }
+
+  // Powerful console: capture iframe console.log/warn/error via postMessage
+  window.addEventListener("message", (e)=>{
+    const d = e.data && e.data.studioLog;
+    if(!d) return;
+    const cons = document.getElementById("studioConsole");
+    if(!cons) return;
+    cons.classList.remove("hidden");
+    const entry = document.createElement("div");
+    entry.className = "log-entry " + (d.level||"");
+    entry.textContent = "[" + (d.level||"log") + "] " + (d.text||"");
+    cons.appendChild(entry);
+    cons.scrollTop = cons.scrollHeight;
+    // keep last 80 lines
+    while(cons.children.length > 80) cons.removeChild(cons.firstChild);
+  });
 
   function setStudioHtml(newHtml, opts = {}) {
     let htmlStr = String(newHtml ?? "");
@@ -6965,11 +7029,12 @@
         ? `Web Studio currently has "${studio.filename}" loaded (${studio.html.length} chars${studio.sourceUrl ? ", cloned from " + studio.sourceUrl : ""}).`
         : "Web Studio is currently blank.";
       parts.push(
-        "🔴 CRITICAL — WEB STUDIO AUTORUN RULE: Web Studio is a SINGLE unified sandboxed iframe (srcdoc) on the right that runs ALL HTML + CSS + JavaScript together — inline <style> and <script> execute instantly, no separate preview needed. When the user asks you to build / create / make / code / generate / edit / redesign a website, app, game, tool, page, component — you MUST call \`web_studio_write\` with the COMPLETE single-file HTML document (include inline <style> and <script>; all JS/CSS must be inline so it runs in one sandbox). Do NOT just output code as markdown/text in chat — that will NOT run. If you have code to show, it MUST be delivered via \`web_studio_write\` so it appears live in Preview.",
+        "🔴 CRITICAL — WEB STUDIO AUTORUN RULE: Web Studio is a SINGLE unified sandboxed iframe (srcdoc) on the right that runs ALL HTML + CSS + JavaScript together — inline <style> and <script> execute instantly, no separate preview needed. When the user asks you to build / create / make / code / generate / edit / redesign a website, app, game, tool, page, component — you MUST call `web_studio_write` with the COMPLETE single-file HTML document (include inline <style> and <script>; all JS/CSS must be inline so it runs in one sandbox). Do NOT just output code as markdown/text in chat — that will NOT run. If you have code to show, it MUST be delivered via `web_studio_write` so it appears live in Preview.",
         studioInfo,
         "Tools: web_studio_load_url (clone any URL into Studio via universal proxy engine), web_studio_get (inspect Code tab), web_studio_write (create/replace entire document — ALL code auto-runs live in one sandbox), web_studio_patch (targeted find/replace), web_publish_github / web_publish_netlify / web_publish_webhook (publish user's own site after confirm).",
         "Workflow: 1) If user gives a URL to clone → web_studio_load_url first. 2) To build new → web_studio_write one polished single-file HTML/CSS/JS. 3) To tweak → web_studio_get then web_studio_patch. 4) Only after writing to Studio, briefly summarize what was built in chat. Never ask user to copy/paste your code block — you write it to Studio for them.",
-        "Publishing: only for sites the user owns/configures (GitHub/Netlify/Webhook in Settings). Confirm before publish; third-party clones stay local in Studio."
+        "Publishing: only for sites the user owns/configures (GitHub/Netlify/Webhook in Settings). Confirm before publish; third-party clones stay local in Studio.",
+        "🚀 POWER CODE — BE BETTER THAN CLAUDE ARTIFACTS: You are a world-class senior frontend engineer + designer. When building, produce AMAZING, production-grade code: (1) Single-file HTML5 with inline <style> + <script> that runs 100% in one sandbox (no external build). Use Tailwind CDN (https://cdn.tailwindcss.com) + modern CSS (gradients, glassmorphism, backdrop-blur, shadows, rounded-2xl, animations via @keyframes + transitions) unless user specifies otherwise. (2) Fully responsive (mobile-first, flex/grid, container queries), dark/light adaptive, accessible (aria-labels, keyboard nav, focus rings). (3) Interactive & powerful: use vanilla JS or petite libraries via CDN (e.g., Chart.js, Three.js, Tone.js) — keep all JS inline and auto-executing. (4) Polished UX: empty states, loading skeletons, toasts, keyboard shortcuts (Cmd+K), command palette, drag & drop where relevant. (5) No code limit — you have UNLIMITED tokens (auto-continue will finish long apps); generate complete, runnable apps with all features, not stubs. If code is long, generate full document in one go (up to 16k tokens) — do not truncate. (6) Always include <meta viewport> + beautiful typography (Inter/system-ui) + micro-interactions. Strive to wow the user — ship delightful, app-store quality experiences."
       );
     }
     if (hasSecTools && settings.secAuditEnabled !== false) {
@@ -7745,8 +7810,8 @@
     updateSendButtonState();
 
     const startedAt = performance.now();
-    const modelObj = getCurrentModelObj();
-    const provCfg = getProviderConfig(modelObj);
+    let modelObj = getCurrentModelObj();
+    let provCfg = getProviderConfig(modelObj);
     const webOn = !isOfflineActive() && Boolean(settings.webEnabled);
     const requireSearchThisTurn = forceSearchNext;
     if (foState.depth === 0) {
@@ -7777,6 +7842,17 @@
       messages: chat.messages.filter(m => m.id !== assistantMsg.id)
     };
     const lastUserPrompt = [...historyChat.messages].reverse().find(m => m.role === "user")?.content || "";
+    // UNLIMITED POWER: if user wants to build code but current model is 512-limited (Horde anonymous), auto-route to best high-limit coding model for this turn only (no stickiness)
+    const _isBuildIntentEarly = /\b(build|create|make|generate|design|code|develop|prototype|clone|remake|edit|update|fix|redesign|replicate|copy|website|webpage|web page|app|game|tool|page|component|layout|landing|portfolio|dashboard|todo|calculator|shop|store|blog|chat|saas|api)\b/i.test(lastUserPrompt);
+    if(_isBuildIntentEarly && (provCfg.provider === "aihorde" || Number(modelObj.max_completion_tokens||0) <= 560)){
+      const bestCode = getBestCodeModel();
+      if(bestCode && bestCode.id !== modelObj.id){
+        modelObj = bestCode;
+        provCfg = getProviderConfig(bestCode);
+        assistantMsg.notice = `Power Mode: routed build to ${bestCode.display_name || bestCode.id} (unlimited code, ~${(bestCode.context_length||131072).toLocaleString()} ctx)`;
+        scheduleRender();
+      }
+    }
     const activeTools = provCfg.provider === "browser"
       ? []
       : getActiveToolDefinitions(webOn, "agent", modelObj, lastUserPrompt, requireSearchThisTurn);
@@ -7971,6 +8047,18 @@
             });
           }
           continue;
+        }
+
+        // UNLIMITED CODE: if model hit token limit mid-code, auto-continue without asking user (up to 3 extra rounds)
+        if (lastFinishReason === "length" && _isBuildIntentEarly && round < maxRounds - 1) {
+          const looksLikeCode = /<html|<!doctype|<script|<style|<div|<canvas|function\s+\w+|=>|import\s/.test(roundContent) || roundContent.trim().endsWith("<") || (!/<\/html>/i.test(assistantMsg.content) && assistantMsg.content.length > 800);
+          if (looksLikeCode || roundContent.length > 400) {
+            assistantMsg.notice = "Unlimited Power: continuing code (no limit)...";
+            scheduleRender();
+            apiMessages.push({ role: "assistant", content: roundContent });
+            apiMessages.push({ role: "user", content: "Continue exactly where you left off. Complete the remaining HTML/CSS/JS without repeating already generated code. Ensure document ends with proper closing tags like </html>." });
+            continue;
+          }
         }
 
         // Done! Extract any additional links mentioned in the final response

@@ -1569,6 +1569,62 @@
   .toast.show { transform: translateY(0); opacity: 1; }
 
   /* ── Modality & Provider Badges ──────────────────────────────────────────── */
+  .model-picker-btn {
+    display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 10px;
+    background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+    min-width: 240px; max-width: 360px; cursor: pointer;
+    transition: all 0.15s; box-shadow: var(--shadow-sm);
+  }
+  .model-picker-btn:hover { border-color: var(--border-hover); background: var(--bg-elevated); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .model-picker-btn:active { transform: translateY(0); }
+  .model-picker-btn .model-avatar {
+    width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center;
+    font-size: 11px; font-weight: 800; color: white; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent) 0%, #ea580c 100%);
+    box-shadow: 0 2px 8px rgba(245,158,11,0.3);
+  }
+  .model-picker-btn .model-meta { flex: 1; min-width: 0; text-align: left; }
+  .model-picker-btn .model-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+  .model-picker-btn .model-provider { display: block; font-size: 10px; color: var(--text-muted); font-weight: 500; }
+  .model-picker-dropdown {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0; min-width: 380px;
+    background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg); max-height: 480px; display: none; flex-direction: column; z-index: 100; overflow: hidden;
+  }
+  .model-picker-dropdown.open { display: flex; }
+  .model-picker-search { padding: 10px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+  .model-picker-search input {
+    flex: 1; background: var(--bg-canvas); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 7px 10px; font-size: 13px; outline: none;
+  }
+  .model-picker-search input:focus { border-color: var(--accent-border); }
+  .model-picker-list { overflow-y: auto; padding: 6px; flex: 1; }
+  .model-picker-group { margin-bottom: 8px; }
+  .model-picker-group-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-muted); padding: 8px 10px 4px; display: flex; align-items: center; gap: 6px;
+  }
+  .model-picker-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: background 0.12s;
+  }
+  .model-picker-item:hover { background: var(--bg-hover); }
+  .model-picker-item.active { background: var(--accent-soft); border: 1px solid var(--accent-border); }
+  .model-picker-item .item-avatar {
+    width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+    font-size: 12px; font-weight: 700; color: white; flex-shrink: 0;
+  }
+  .model-picker-item .item-info { flex: 1; min-width: 0; }
+  .model-picker-item .item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .model-picker-item .item-desc { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .model-picker-item .item-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 99px;
+    background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-muted);
+  }
+  .model-picker-item.active .item-badge { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .model-picker-wrap {
   .model-picker-wrap {
     display: flex;
     align-items: center;
@@ -2271,9 +2327,25 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
         </button>
 
-        <div class="model-picker-wrap">
-          <select class="control-select" id="modelSelect" title="Select abliterated model"></select>
-          <span class="modality-pill vision" id="modelModalityBadge" title="Model input modality">TEXT + VISION</span>
+        <div class="model-picker-wrap" id="modelPickerWrap" style="position:relative;">
+          <button class="model-picker-btn" id="modelPickerBtn" title="Select model (⌘K for palette)">
+            <span class="model-avatar" id="modelPickerAvatar">AI</span>
+            <span class="model-meta">
+              <span class="model-name" id="modelPickerName">Loading models…</span>
+              <span class="model-provider" id="modelPickerProvider">Keyless · Unlimited</span>
+            </span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="model-picker-dropdown" id="modelPickerDropdown">
+            <div class="model-picker-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="modelPickerSearch" placeholder="Search models…" autocomplete="off" />
+              <span class="kbd">/</span>
+            </div>
+            <div class="model-picker-list" id="modelPickerList"></div>
+          </div>
+          <select class="control-select" id="modelSelect" title="Select abliterated model" style="display:none"></select>
+          <span class="modality-pill vision" id="modelModalityBadge" title="Model input modality" style="margin-left:8px;">TEXT + VISION</span>
         </div>
         <button class="icon-btn" id="compareModeBtn" title="10× Power: Compare 2 models side-by-side (abliterated vs non-abliterated)" style="border:1px solid var(--border);background:var(--bg-surface);">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -9175,6 +9247,97 @@ let studio = loadStudioState();
     if(sDot) sDot.style.background = supaSet ? "#10b981" : "#71717a";
     if(sTxt) sTxt.textContent = supaSet ? "✓ Connected" : "Not configured";
   }
+  function getModelAvatarInfo(m){
+    const cat = isAbliteratedModel(m) ? "A" : "N";
+    const prov = (m.provider||"").toLowerCase();
+    if(m.isAutoRace) return { letter: "⚡", bg: "linear-gradient(135deg,#f59e0b 0%,#ea580c 100%)" };
+    if(prov==="aihorde") return { letter: cat, bg: cat==="A" ? "linear-gradient(135deg,#f59e0b 0%,#ef4444 100%)" : "linear-gradient(135deg,#38bdf8 0%,#0ea5e9 100%)" };
+    if(prov==="pollinations") return { letter: "P", bg: "linear-gradient(135deg,#10b981 0%,#059669 100%)" };
+    if(prov==="llm7") return { letter: "7", bg: "linear-gradient(135deg,#8b5cf6 0%,#6366f1 100%)" };
+    if(prov==="ollama"||prov==="lmstudio") return { letter: "◈", bg: "linear-gradient(135deg,#52525b 0%,#27272a 100%)" };
+    if(prov==="browser") return { letter: "◐", bg: "linear-gradient(135deg,#71717a 0%,#52525b 100%)" };
+    return { letter: cat, bg: "linear-gradient(135deg,#f59e0b 0%,#ea580c 100%)" };
+  }
+  function renderModelPickerDropdown(filter=""){
+    const listEl = document.getElementById("modelPickerList");
+    if(!listEl) return;
+    const q = (filter||"").toLowerCase().trim();
+    const cachedSet = new Set(Array.isArray(settings.cachedBrowserModels) ? settings.cachedBrowserModels : []);
+    const detectedLocalIds = new Set(ollamaDetectedModels.map(m => `${m.provider}::${m.id}`));
+    const isLiveLocal = m => (m.provider === "ollama" || m.provider === "lmstudio") && (m.isDetected || detectedLocalIds.has(`${m.provider}::${m.id}`));
+    const isOnlineCloud = m => m.provider === "aihorde" || m.provider === "pollinations" || m.provider === "llm7" || m.provider === "auto-nonablit" || m.isAutoRace;
+    const isAutoRace = m => !!m.isAutoRace;
+    const groups = [
+      { label: "⚡ Auto-Race — Fastest", icon: "⚡", filter: m => isAutoRace(m) },
+      { label: "Abliterated — Cloud", icon: "🔓", filter: m => isAbliteratedModel(m) && isOnlineCloud(m) && !isAutoRace(m) },
+      { label: "Abliterated — Local", icon: "◈", filter: m => isAbliteratedModel(m) && isLiveLocal(m) },
+      { label: "Standard — Cloud", icon: "▣", filter: m => !isAbliteratedModel(m) && isOnlineCloud(m) && !isAutoRace(m) },
+      { label: "Standard — Local", icon: "◈", filter: m => !isAbliteratedModel(m) && isLiveLocal(m) },
+      { label: "Offline — HTML", icon: "◐", filter: m => m.provider === "browser" },
+      { label: "Custom", icon: "✦", filter: m => m.provider === "custom" }
+    ];
+    let html="";
+    let totalShown=0;
+    for(const g of groups){
+      let items = models.filter(g.filter);
+      if(q) items = items.filter(m => `${m.id} ${m.display_name||""} ${m.base_model||""}`.toLowerCase().includes(q));
+      if(!items.length) continue;
+      totalShown += items.length;
+      html += `<div class="model-picker-group"><div class="model-picker-group-label">${g.icon} ${g.label} · ${items.length}</div>`;
+      for(const m of items){
+        const active = m.id === settings.model;
+        const av = getModelAvatarInfo(m);
+        const ctx = formatCtxShort(m.context_length);
+        const badge = modelSupportsImages(m) ? "VISION" : "TEXT";
+        html += `<div class="model-picker-item ${active?"active":""}" data-pick-model="${m.id}">
+          <span class="item-avatar" style="background:${av.bg}">${av.letter}</span>
+          <span class="item-info"><span class="item-name">${escHtml(m.display_name||m.id)}</span><span class="item-desc">${escHtml([m.base_model, ctx].filter(Boolean).join(" · "))}</span></span>
+          <span class="item-badge">${badge}</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    if(!totalShown) html = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">No models match “${escHtml(q)}”</div>`;
+    listEl.innerHTML = html;
+    listEl.querySelectorAll("[data-pick-model]").forEach(el=>{
+      el.addEventListener("click", ()=>{
+        selectModelById(el.dataset.pickModel);
+        closeModelPicker();
+      });
+    });
+  }
+  function updateModelPickerButton(){
+    const m = getCurrentModelObj();
+    if(!m) return;
+    const nameEl = document.getElementById("modelPickerName");
+    const provEl = document.getElementById("modelPickerProvider");
+    const avEl = document.getElementById("modelPickerAvatar");
+    if(nameEl) nameEl.textContent = m.display_name || m.id;
+    if(provEl) provEl.textContent = `${PROVIDER_LABELS[m.provider]||m.provider} · ${formatCtxShort(m.context_length)}`;
+    if(avEl){
+      const av=getModelAvatarInfo(m);
+      avEl.textContent=av.letter;
+      avEl.style.background=av.bg;
+    }
+  }
+  function openModelPicker(){
+    const dd=document.getElementById("modelPickerDropdown");
+    const inp=document.getElementById("modelPickerSearch");
+    if(!dd) return;
+    dd.classList.add("open");
+    renderModelPickerDropdown(inp?.value||"");
+    setTimeout(()=> inp?.focus(), 30);
+  }
+  function closeModelPicker(){
+    document.getElementById("modelPickerDropdown")?.classList.remove("open");
+  }
+  // Close picker on Esc globally (alongside other Esc handlers)
+  document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") closeModelPicker(); });
+  function toggleModelPicker(){
+    const dd=document.getElementById("modelPickerDropdown");
+    if(dd?.classList.contains("open")) closeModelPicker(); else openModelPicker();
+  }
+
   function populateModelSelect() {
     const cachedSet = new Set(Array.isArray(settings.cachedBrowserModels) ? settings.cachedBrowserModels : []);
     const detectedLocalIds = new Set(ollamaDetectedModels.map(m => `${m.provider}::${m.id}`));
@@ -9220,6 +9383,7 @@ let studio = loadStudioState();
     }
     // Ensure visible text even if emoji font missing: force fallback font
     el.modelSelect.style.fontFamily = 'var(--font-sans)';
+    try{ updateModelPickerButton(); renderModelPickerDropdown(document.getElementById("modelPickerSearch")?.value||""); }catch{}
   }
 
   function syncModelCapabilitiesUI() {
@@ -9512,6 +9676,11 @@ let studio = loadStudioState();
   // ── Event Listeners ─────────────────────────────────────────────────────────
   el.toggleSidebarBtn.addEventListener("click", () => el.sidebar.classList.toggle("collapsed"));
   el.closeSidebarBtn.addEventListener("click", () => el.sidebar.classList.add("collapsed"));
+  // Premium model picker wiring (10× polished vs native select)
+  document.getElementById("modelPickerBtn")?.addEventListener("click", (e)=>{ e.stopPropagation(); toggleModelPicker(); });
+  document.getElementById("modelPickerSearch")?.addEventListener("input", (e)=> renderModelPickerDropdown(e.target.value));
+  document.getElementById("modelPickerSearch")?.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ e.preventDefault(); closeModelPicker(); }});
+  document.addEventListener("click", (e)=>{ const w=document.getElementById("modelPickerWrap"); if(w && !w.contains(e.target)) closeModelPicker(); });
   el.newChatBtn.addEventListener("click", () => {
     if (isStreaming) activeAbortController?.abort();
     createChat();

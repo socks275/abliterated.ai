@@ -460,8 +460,11 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 8px center;
-    max-width: 245px;
+    max-width: 360px;
+    min-width: 220px;
     text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   .control-select:focus { border-color: var(--accent-border); }
@@ -2308,7 +2311,7 @@
           ></textarea>
           <div class="studio-empty-overlay" id="studioEmptyOverlay">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-            <div style="font-weight:700;font-size:15px;color:var(--text-primary);">⚡ Power Studio — Unlimited Code</div>
+            <div style="font-weight:700;font-size:15px;color:var(--text-primary);">>> Power Studio — Unlimited Code</div>
             <div style="font-size:12.5px;max-width:340px;line-height:1.55;">
               Ask the AI to <strong>build anything</strong> — apps, games, dashboards, clones — <strong>any framework</strong>, or open a <code class="inline-code">.html</code> file — edits render live here and can be saved locally or published straight to <strong>GitHub Pages</strong>, <strong>Netlify</strong>, or your <strong>Webhook/CMS</strong>.
             </div>
@@ -2578,7 +2581,7 @@
     provider: "aihorde",
     category: "abliterated",
     isAutoRace: true,
-    display_name: "⚡ Fastest Abliterated — Auto-Race (Online Keyless · Unlimited)",
+    display_name: ">> Fastest Abliterated — Auto-Race (Online Keyless · Unlimited)",
     base_model: "AI Horde · Races Top Live GPUs · Lowest Latency · Zero Key",
     input_modalities: ["text"],
     context_length: 16384,
@@ -2598,7 +2601,7 @@
     category: "standard",
     isAutoRace: true,
     isNonAblitRace: true,
-    display_name: "⚡ Fastest Non-Abliterated — Auto-Race (Online Keyless · Turbo)",
+    display_name: ">> Fastest Non-Abliterated — Auto-Race (Online Keyless · Turbo)",
     base_model: "Races Pollinations + LLM7 + AI Horde · Lowest Latency · Zero Key",
     input_modalities: ["text"],
     context_length: 131072,
@@ -7550,7 +7553,7 @@
     let winnerIdx = -1;
     let firstErr = null;
     const launchDelays = [0, 550, 3800];
-    onStatus && onStatus(`⚡ Racing fastest live abliterated GPUs (${racers.slice(0, 2).map(r => formatAiHordeModelName(r.id)).join(" vs ")})...`);
+    onStatus && onStatus(`>> Racing fastest live abliterated GPUs (${racers.slice(0, 2).map(r => formatAiHordeModelName(r.id)).join(" vs ")})...`);
 
     const runOneRacer = async (idx) => {
       const delay = launchDelays[idx] || 0;
@@ -7577,7 +7580,7 @@
               winnerIdx = idx;
               ctrls.forEach((c, j) => { if (j !== idx) c.abort(); });
               const sec = ((Date.now() - raceStartedAt) / 1000).toFixed(1);
-              onStatus && onStatus(`⚡ Fastest GPU won in ${sec}s: ${formatAiHordeModelName(racerObj.id)}`);
+              onStatus && onStatus(`>> Fastest GPU won in ${sec}s: ${formatAiHordeModelName(racerObj.id)}`);
             }
           },
           onReasoning: (delta, full) => {
@@ -7588,7 +7591,7 @@
           },
           onStatus: (txt) => {
             if (winnerIdx === -1 && idx === 0 && onStatus) {
-              onStatus(`⚡ Racing ${racers.slice(0, 2).map(r => formatAiHordeModelName(r.id)).join(" vs ")} · ${txt}`);
+              onStatus(`>> Racing ${racers.slice(0, 2).map(r => formatAiHordeModelName(r.id)).join(" vs ")} · ${txt}`);
             }
           }
         });
@@ -7661,7 +7664,7 @@
     let firstErr = null;
     // Stagger 0ms, 700ms, 3200ms — Pollinations has 30s per-IP limit, so we deliberately space pollinations vs llm7 vs horde across buckets
     const launchDelays = [0, 700, 3200];
-    onStatus && onStatus(`⚡ Racing fastest Non-Abliterated (Pollinations vs LLM7 vs Horde)...`);
+    onStatus && onStatus(`>> Racing fastest Non-Abliterated (Pollinations vs LLM7 vs Horde)...`);
     const runOne = async (idx) => {
       const delay = launchDelays[idx]||0;
       if (delay>0) {
@@ -7680,12 +7683,12 @@
               winnerIdx = idx;
               ctrls.forEach((c,j)=>{ if(j!==idx) c.abort(); });
               const sec = ((Date.now()-raceStartedAt)/1000).toFixed(1);
-              onStatus && onStatus(`⚡ Fastest Non-Ablit won in ${sec}s: ${racerObj.display_name||racerObj.id}`);
+              onStatus && onStatus(`>> Fastest Non-Ablit won in ${sec}s: ${racerObj.display_name||racerObj.id}`);
             }
           },
           onReasoning: (d,f)=>{ if(winnerIdx===idx && onReasoning) onReasoning(d,f); },
           onContent: (d,f)=>{ if(winnerIdx===idx && onContent) onContent(d,f); },
-          onStatus: (txt)=>{ if(winnerIdx===-1 && idx===0 && onStatus) onStatus(`⚡ Racing Non-Ablit · ${txt}`); }
+          onStatus: (txt)=>{ if(winnerIdx===-1 && idx===0 && onStatus) onStatus(`>> Racing Non-Ablit · ${txt}`); }
         });
         if (winnerIdx===idx) return {...res, winnerModelObj: racerObj};
         return null;
@@ -8456,7 +8459,7 @@
               <button type="button" class="model-filter-tab ${catalogFilter === "vision" ? "active" : ""}" data-catalog-filter="vision">Text + Vision (${visionCount})</button>
             </div>
           </div>
-          <div class="model-catalog-grid">${cardsHtml}</div>
+          <div class="model-catalog-grid">${cardsHtml || '<div style="padding:24px;text-align:center;color:var(--text-muted);grid-column:1/-1;">No models match this filter — click <strong>All</strong> above to see all '+models.length+' verified models.</div>'}</div>
         </div>
         <div class="quick-grid">
           <button class="quick-card" data-quick="Clone https://example.com into Web Studio and redesign it as a sleek modern dark-mode interactive landing page with live animations.">
@@ -8705,7 +8708,7 @@
     const isAutoRace = m => !!m.isAutoRace;
 
     const groups = [
-      { label: "⚡ Auto-Race — Fastest Instant (Recommended)", filter: m => isAutoRace(m) },
+      { label: ">> Auto-Race — Fastest Instant (Recommended)", filter: m => isAutoRace(m) },
       { label: "Abliterated — Online Keyless Cloud (Unlimited · Zero Download)", filter: m => isAbliteratedModel(m) && isOnlineCloud(m) && !isAutoRace(m) },
       { label: "Abliterated — Running Local Server (Ready Now)", filter: m => isAbliteratedModel(m) && isLiveLocal(m) },
       { label: "Non-Abliterated — ChatGPT & Online Keyless Cloud (Instant)", filter: m => !isAbliteratedModel(m) && isOnlineCloud(m) && !isAutoRace(m) },
@@ -8730,6 +8733,9 @@
       htmlParts.push(`<optgroup label="${escHtml(g.label)}">${opts}</optgroup>`);
     }
 
+    if(!htmlParts.length){
+      htmlParts.push('<optgroup label="No models matched filter"><option value="">No models — reset filter in Settings</option></optgroup>');
+    }
     el.modelSelect.innerHTML = htmlParts.join("");
     if (models.some(m => m.id === settings.model)) {
       el.modelSelect.value = settings.model;
@@ -8737,6 +8743,8 @@
       settings.model = models[0].id;
       el.modelSelect.value = settings.model;
     }
+    // Ensure visible text even if emoji font missing: force fallback font
+    el.modelSelect.style.fontFamily = 'var(--font-sans)';
   }
 
   function syncModelCapabilitiesUI() {
@@ -8782,7 +8790,7 @@
     const modTag = getModalityLabel(modelObj);
     const offline = isOfflineActive();
     const routeNote = offline ? " · Offline / No-Wi-Fi" : (proxyAvailable && String(provCfg.endpointBase).startsWith("./api/") ? " · Same-origin proxy" : "");
-    const raceNote = modelObj.isAutoRace ? " · ⚡ Auto-Race" : "";
+    const raceNote = modelObj.isAutoRace ? " · >> Auto-Race" : "";
     const webNote = offline
       ? "Offline In-Browser AI & Local Web Studio active"
       : (settings.webEnabled ? "Keyless Live Web Agent" : "Web paused");

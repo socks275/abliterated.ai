@@ -6757,10 +6757,9 @@ let studio = loadStudioState();
     if(prov==="browser") return { letter: "◐", bg: "linear-gradient(135deg,#71717a 0%,#52525b 100%)" };
     return { letter: cat, bg: "linear-gradient(135deg,#f59e0b 0%,#ea580c 100%)" };
   }
-  function renderModelPickerDropdown(filter=""){
+  function renderModelPickerDropdown(){
     const listEl = document.getElementById("modelPickerList");
     if(!listEl) return;
-    const q = (filter||"").toLowerCase().trim();
     const cachedSet = new Set(Array.isArray(settings.cachedBrowserModels) ? settings.cachedBrowserModels : []);
     const detectedLocalIds = new Set(ollamaDetectedModels.map(m => `${m.provider}::${m.id}`));
     const isLiveLocal = m => (m.provider === "ollama" || m.provider === "lmstudio") && (m.isDetected || detectedLocalIds.has(`${m.provider}::${m.id}`));
@@ -6780,7 +6779,6 @@ let studio = loadStudioState();
     const hiddenCountTop = getHiddenCount();
     for(const g of groups){
       let items = models.filter(g.filter).filter(m=> settings.showHiddenModels || !isModelHidden(m));
-      if(q) items = items.filter(m => `${m.id} ${m.display_name||""} ${m.base_model||""}`.toLowerCase().includes(q));
       if(!items.length) continue;
       totalShown += items.length;
       html += `<div class="model-picker-group"><div class="model-picker-group-label">${g.icon} ${g.label} · ${items.length}</div>`;
@@ -6799,7 +6797,7 @@ let studio = loadStudioState();
       }
       html += `</div>`;
     }
-    if(!totalShown) html = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">No models match “${escHtml(q)}”</div>`;
+    if(!totalShown) html = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">No models available</div>`;
     listEl.innerHTML = html;
     listEl.querySelectorAll("[data-pick-model]").forEach(el=>{
       el.addEventListener("click", ()=>{
@@ -6824,11 +6822,9 @@ let studio = loadStudioState();
   }
   function openModelPicker(){
     const dd=document.getElementById("modelPickerDropdown");
-    const inp=document.getElementById("modelPickerSearch");
     if(!dd) return;
     dd.classList.add("open");
-    renderModelPickerDropdown(inp?.value||"");
-    setTimeout(()=> inp?.focus(), 30);
+    renderModelPickerDropdown();
   }
   function closeModelPicker(){
     document.getElementById("modelPickerDropdown")?.classList.remove("open");
@@ -6886,7 +6882,7 @@ let studio = loadStudioState();
       }
       el.modelSelect.style.fontFamily = 'var(--font-sans)';
     }
-    try{ updateModelPickerButton(); renderModelPickerDropdown(document.getElementById("modelPickerSearch")?.value||""); }catch{}
+    try{ updateModelPickerButton(); renderModelPickerDropdown(); }catch{}
   }
 
   function syncModelCapabilitiesUI() {
@@ -7181,26 +7177,7 @@ let studio = loadStudioState();
   el.closeSidebarBtn.addEventListener("click", () => el.sidebar.classList.add("collapsed"));
   // Premium model picker wiring (10× polished vs native select)
   document.getElementById("modelPickerBtn")?.addEventListener("click", (e)=>{ e.stopPropagation(); toggleModelPicker(); });
-  document.getElementById("modelPickerSearch")?.addEventListener("input", (e)=> renderModelPickerDropdown(e.target.value));
-  document.getElementById("modelPickerSearch")?.addEventListener("keydown", (e)=>{
-    if(e.key==="Escape"){ e.preventDefault(); closeModelPicker(); }
-    if(e.key==="ArrowDown" || e.key==="ArrowUp"){
-      e.preventDefault();
-      const items=[...document.querySelectorAll("#modelPickerList .model-picker-item")];
-      if(!items.length) return;
-      let idx=items.findIndex(el=> el.classList.contains("keyboard-focus"));
-      if(idx===-1) idx = e.key==="ArrowDown" ? -1 : 0;
-      if(idx>=0) items[idx].classList.remove("keyboard-focus");
-      idx = e.key==="ArrowDown" ? Math.min(items.length-1, idx+1) : Math.max(0, idx-1);
-      items[idx].classList.add("keyboard-focus");
-      items[idx].scrollIntoView({ block:"nearest" });
-    }
-    if(e.key==="Enter"){
-      const focused=document.querySelector("#modelPickerList .model-picker-item.keyboard-focus");
-      const target = focused || document.querySelector("#modelPickerList .model-picker-item");
-      if(target){ e.preventDefault(); target.click(); }
-    }
-  });
+  // search removed — dropdown only
   document.addEventListener("click", (e)=>{ const w=document.getElementById("modelPickerWrap"); if(w && !w.contains(e.target)) closeModelPicker(); });
   el.newChatBtn.addEventListener("click", () => {
     if (isStreaming) activeAbortController?.abort();

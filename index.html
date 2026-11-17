@@ -1150,6 +1150,24 @@
     background: var(--danger-soft);
   }
 
+  /* ── Command Palette (Cmd+K like Claude) ───────────────────────────────── */
+  .cmdk-overlay { position:fixed; inset:0; z-index:200; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display:none; place-items:start center; padding-top: 12vh; }
+  .cmdk-overlay.open { display:grid; }
+  .cmdk-box { width:min(640px, 92vw); max-height: 68vh; background: var(--bg-surface); border:1px solid var(--border-strong); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,0.45); overflow:hidden; display:flex; flex-direction:column; }
+  .cmdk-input-row { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid var(--border); }
+  .cmdk-input-row input { flex:1; background:transparent; border:none; outline:none; font-size:14px; color:var(--text-primary); }
+  .cmdk-list { overflow-y:auto; padding:6px; display:flex; flex-direction:column; gap:2px; }
+  .cmdk-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 10px; border-radius:8px; font-size:13px; color:var(--text-secondary); cursor:pointer; }
+  .cmdk-item.active, .cmdk-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .cmdk-kbd { font-family:var(--font-mono); font-size:10px; background:var(--bg-canvas); border:1px solid var(--border); padding:1px 5px; border-radius:4px; color:var(--text-muted); }
+  .sidebar-group-label { font-size:10px; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase; padding:10px 10px 4px; }
+  .failover-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:99px; background: var(--accent-soft); border:1px solid var(--accent-border); font-size:12px; color:var(--text-primary); }
+  .failover-chip details { display:inline; }
+  .failover-chip summary { cursor:pointer; list-style:none; font-weight:600; }
+  .failover-chip summary::-webkit-details-marker { display:none; }
+  .msg-entrance { animation: msgIn 0.18s ease; }
+  @keyframes msgIn { from{ opacity:0; transform: translateY(4px)} to{opacity:1; transform:none} }
+
   /* ── Composer ────────────────────────────────────────────────────────────── */
   .composer-dock {
     flex-shrink: 0;
@@ -2148,7 +2166,8 @@
         </div>
         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);" id="connModelsCount">—</span>
       </div>
-      <div class="sidebar-footer-actions">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 8px;font-size:10.5px;color:var(--text-muted);"><span class="kbd">⌘K</span> palette <span class="kbd">⌘N</span> new <span class="kbd">/</span> search</div>
+    <div class="sidebar-footer-actions">
         <button class="footer-btn" id="openSettingsBtn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
           Settings
@@ -2475,6 +2494,27 @@
       <div class="field-help">Sends edited HTML JSON/body to your own WordPress, Supabase Edge Function, Cloudflare Worker, or CMS endpoint.</div>
     </div>
 
+    <div class="field-section">Connectors — GitHub & Supabase <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:var(--text-muted);">· as good as Claude, free</span></div>
+    <div class="field-group">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span id="supabaseStatusDot" style="width:8px;height:8px;border-radius:50%;background:#71717a;"></span>
+        <label class="field-label" for="supabaseUrlInput" style="margin:0;">Supabase Project URL</label>
+        <span id="supabaseStatusText" style="font-size:11px;color:var(--text-muted);margin-left:auto;">Not configured</span>
+      </div>
+      <input type="text" class="field-input mono" id="supabaseUrlInput" placeholder="https://xyz.supabase.co" />
+      <label class="field-label" for="supabaseKeyInput" style="margin-top:8px;">Supabase Anon Key</label>
+      <input type="password" class="field-input mono" id="supabaseKeyInput" placeholder="eyJ... (anon public key)" />
+      <div class="field-help">Connect Supabase like Claude — AI can <code class="inline-code">supabase_query</code> your tables and <code class="inline-code">supabase_insert</code> rows. Keys stay in this browser only. <a href="https://supabase.com/dashboard" target="_blank" rel="noopener" style="color:var(--accent);">Get keys →</a></div>
+    </div>
+    <div class="field-group">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="ghStatusDot" style="width:8px;height:8px;border-radius:50%;background:#71717a;"></span>
+        <label class="field-label" style="margin:0;">GitHub Connector — as good as Claude</label>
+        <span id="ghStatusText" style="font-size:11px;color:var(--text-muted);margin-left:auto;">Public only</span>
+      </div>
+      <div class="field-help">Uses GitHub PAT from above (<code class="inline-code">ghToken</code>). AI can <code class="inline-code">github_get_file</code>, <code class="inline-code">github_list_files</code>, <code class="inline-code">github_search</code> any public repo instantly — private needs PAT. <a href="https://github.com/settings/tokens" target="_blank" rel="noopener" style="color:var(--accent);">Create PAT →</a></div>
+    </div>
+
     <div class="field-section">Defensive Security Audit (Authorized Sites)</div>
 
     <div class="field-group">
@@ -2502,8 +2542,9 @@
     </div>
 
     <div class="field-group">
-      <label class="field-label" for="maxTokensInput">Max Output Tokens</label>
+      <label class="field-label" for="maxTokensInput">Max Output Tokens <span id="maxTokensHint" style="font-weight:400;color:var(--text-muted);font-size:11px;"></span></label>
       <input type="number" class="field-input mono" id="maxTokensInput" min="128" max="262144" step="256" />
+      <div class="field-help">Up to 262K with Pollinations/LLM7 — AI Horde anonym caps at 512 (auto-handled). Power builds auto-route to high-limit models.</div>
     </div>
 
     <div class="field-group">
@@ -2526,6 +2567,7 @@
 </aside>
 
 <div class="toast" id="toast"></div>
+<div class="cmdk-overlay" id="cmdkOverlay" aria-hidden="true"><div class="cmdk-box" role="dialog" aria-label="Command palette"><div class="cmdk-input-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="cmdkInput" placeholder="Search chats, models, actions…  (Esc to close)" autocomplete="off" /><span class="cmdk-kbd">ESC</span></div><div class="cmdk-list" id="cmdkList"></div></div></div>
 
 <script>
 (() => {
@@ -7823,11 +7865,7 @@
           onContent: (delta, full) => {
             if (winnerIdx === idx && onContent) onContent(delta, full);
           },
-          onStatus: (txt) => {
-            if (winnerIdx === -1 && idx === 0 && onStatus) {
-              onStatus(`>> Racing ${racers.slice(0, 2).map(r => formatAiHordeModelName(r.id)).join(" vs ")} · ${txt}`);
-            }
-          }
+          onStatus: (()=>{ let last=""; return (txt)=>{ if(txt===last) return; last=txt; if (winnerIdx === -1 && idx === 0 && onStatus) { onStatus(`>> Racing ${racers.slice(0, 2).map(r => formatAiHordeModelName(r.id)).join(" vs ")} · ${txt}`); } }; })()
         });
         if (winnerIdx === idx) {
           return { ...res, winnerModelObj: racerObj };
@@ -8258,10 +8296,7 @@
           useNativeWeb: false,
           modelOverride: pinnedRaceWinnerObj || null,
           signal,
-          onStatus: (txt) => {
-            assistantMsg.notice = assistantMsg._failoverBanner ? `${assistantMsg._failoverBanner} (${txt})` : txt;
-            scheduleRender(false);
-          },
+          onStatus: (()=>{ let last="", lastAt=0; return (txt)=>{ const now=Date.now(); if(txt===last && now-lastAt<600) return; last=txt; lastAt=now; assistantMsg.notice = assistantMsg._failoverBanner ? `${assistantMsg._failoverBanner} (${txt})` : txt; scheduleRender(false); }; })(),
           onReasoning: (delta, full) => {
             assistantMsg.reasoning = roundPrefixReasoning + full;
             scheduleRender(false);
@@ -8444,6 +8479,14 @@
       isStreaming = false;
       activeAbortController = null;
       chat.updatedAt = Date.now();
+      // Smart title: if still default, generate from first user prompt (Claude-like)
+      if(chat.title === "New conversation" || chat.title === "New chat"){
+        const firstUser = chat.messages.find(m=> m.role==="user");
+        if(firstUser && firstUser.content){
+          chat.title = firstUser.content.slice(0,48).replace(/\s+/g," ").trim();
+          if(chat.title.length===48) chat.title += "…";
+        }
+      }
       saveChats();
       updateSendButtonState();
       updateAssistantMessageDOM(assistantMsg);
@@ -8464,6 +8507,13 @@
   }
 
   // ── User Actions ────────────────────────────────────────────────────────────
+  // ── Composer draft persistence (Claude-like) ───────────────────────────
+  const DRAFT_KEY = "ablit_composer_draft";
+  function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, el.promptInput.value); }catch{} }
+  function loadDraft(){ try{ const d=localStorage.getItem(DRAFT_KEY); if(d){ el.promptInput.value=d; autoResizeTextarea(); } }catch{} }
+  // Restore draft on load after DOM ready
+  setTimeout(loadDraft, 400);
+
   async function handleSend() {
     if (isStreaming) {
       activeAbortController?.abort();
@@ -8529,6 +8579,7 @@
 
     el.promptInput.value = "";
     autoResizeTextarea();
+    try{ localStorage.removeItem(DRAFT_KEY); }catch{}
     pendingImages = [];
     renderPendingAttachments();
     saveChats();
@@ -8593,8 +8644,20 @@
       el.chatList.innerHTML = `<div style="padding:18px 10px;text-align:center;font-size:12px;color:var(--text-muted);">${filter ? "No matching chats" : "No saved conversations yet"}</div>`;
       return;
     }
-
-    el.chatList.innerHTML = list.map(c => {
+    // Group by date like Claude: Today / Yesterday / Previous 7 Days / Older
+    const now = Date.now();
+    const oneDay = 86400000;
+    const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+    const startTodayMs = startOfToday.getTime();
+    const groups = { "Today": [], "Yesterday": [], "Previous 7 Days": [], "Older": [] };
+    for(const c of list){
+      const t = c.updatedAt || c.createdAt || 0;
+      if(t >= startTodayMs) groups["Today"].push(c);
+      else if(t >= startTodayMs - oneDay) groups["Yesterday"].push(c);
+      else if(t >= startTodayMs - 7*oneDay) groups["Previous 7 Days"].push(c);
+      else groups["Older"].push(c);
+    }
+    const renderOne = (c)=>{
       const count = c.messages.filter(m => m.role === "user").length;
       const d = new Date(c.updatedAt || c.createdAt);
       const timeLabel = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -8613,7 +8676,16 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </button>
         </div>`;
-    }).join("");
+    };
+    let html = "";
+    for(const [label, arr] of Object.entries(groups)){
+      if(!arr.length) continue;
+      if(!filter) html += `<div class="sidebar-group-label">${label}</div>`;
+      html += arr.map(renderOne).join("");
+    }
+    // Fallback if grouped produced nothing (shouldn't happen) 
+    if(!html) html = list.map(renderOne).join("");
+    el.chatList.innerHTML = html;
   }
 
   function renderEmptyState() {
@@ -8711,6 +8783,11 @@
             <span class="quick-card-title">Create a live site in Web Studio</span>
             <span class="quick-card-sub">Renders live side-by-side — save or publish to GitHub/Netlify</span>
           </button>
+          <button class="quick-card" data-quick="Use github_search to find a React dashboard boilerplate, then github_get_file to read its README and summarize the best approach.">
+            <span class="quick-card-tag">GitHub Connector</span>
+            <span class="quick-card-title">Search GitHub & read any file</span>
+            <span class="quick-card-sub">As good as Claude — zero setup for public repos</span>
+          </button>
           <button class="quick-card" data-quick="Explain how abliteration works in large language models and how refusal directions are identified and removed.">
             <span class="quick-card-tag">Abliterated AI</span>
             <span class="quick-card-title">How abliteration works in LLMs</span>
@@ -8803,10 +8880,16 @@
     const mdParsed = renderMarkdown(msg.content || "");
     msg._codeBlocks = mdParsed.codeBlocks || [];
 
-    const noticeHtml = msg.notice
-      ? `<div class="notice-banner"><span>ℹ</span><span>${escHtml(msg.notice)}</span></div>`
-      : "";
-
+    let noticeHtml = "";
+    if(msg.notice){
+      const isFailover = msg.notice.includes("Auto-switched") || msg._failoverBanner;
+      if(isFailover){
+        const short = msg.notice.length>140 ? msg.notice.slice(0,140)+"…" : msg.notice;
+        noticeHtml = `<div class="failover-chip"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;"></span><span>${escHtml(short)}</span><details style="margin-left:6px;"><summary style="font-size:11px;color:var(--text-muted);cursor:pointer;">details</summary><div style="margin-top:6px;font-size:11.5px;white-space:pre-wrap;max-width:560px;">${escHtml(msg.notice)}</div></details></div>`;
+      } else {
+        noticeHtml = `<div class="notice-banner"><span>ℹ</span><span>${escHtml(msg.notice)}</span></div>`;
+      }
+    }
     const errorHtml = msg.error
       ? `<div class="notice-banner error"><span>⚠</span><span>${escHtml(msg.error)}</span></div>`
       : "";
@@ -8934,6 +9017,18 @@
   }
 
   // ── Controls Sync ───────────────────────────────────────────────────────────
+  function updateConnectorDots(){
+    const ghSet = !!(settings.ghToken||"").trim();
+    const ghDot = document.getElementById("ghStatusDot");
+    const ghTxt = document.getElementById("ghStatusText");
+    if(ghDot) ghDot.style.background = ghSet ? "#10b981" : "#f59e0b";
+    if(ghTxt) ghTxt.textContent = ghSet ? "✓ Connected (private OK)" : "Public only — add PAT for private";
+    const supaSet = !!((settings.supabaseUrl||"").trim() && (settings.supabaseKey||"").trim());
+    const sDot = document.getElementById("supabaseStatusDot");
+    const sTxt = document.getElementById("supabaseStatusText");
+    if(sDot) sDot.style.background = supaSet ? "#10b981" : "#71717a";
+    if(sTxt) sTxt.textContent = supaSet ? "✓ Connected" : "Not configured";
+  }
   function populateModelSelect() {
     const cachedSet = new Set(Array.isArray(settings.cachedBrowserModels) ? settings.cachedBrowserModels : []);
     const detectedLocalIds = new Set(ollamaDetectedModels.map(m => `${m.provider}::${m.id}`));
@@ -9217,6 +9312,7 @@
     el.webhookTokenInput.value = settings.webhookToken || "";
   if(el.supabaseUrlInput) el.supabaseUrlInput.value = settings.supabaseUrl || "";
   if(el.supabaseKeyInput) el.supabaseKeyInput.value = settings.supabaseKey || "";
+  try{ updateConnectorDots(); }catch{}
     el.secAuditEnabledToggle.checked = settings.secAuditEnabled !== false;
     el.secAllowedDomainsInput.value = settings.secAllowedDomains || "";
     el.maxTokensInput.value = String(settings.maxTokens);
@@ -9716,13 +9812,13 @@
   el.ghRepoInput.addEventListener("input", () => { settings.ghRepo = el.ghRepoInput.value.trim(); saveSettings(); renderStudioUI(); });
   el.ghBranchInput.addEventListener("input", () => { settings.ghBranch = el.ghBranchInput.value.trim() || "main"; saveSettings(); });
   el.ghPathInput.addEventListener("input", () => { settings.ghPath = el.ghPathInput.value.trim() || "index.html"; saveSettings(); });
-  el.ghTokenInput.addEventListener("input", () => { settings.ghToken = el.ghTokenInput.value.trim(); saveSettings(); renderStudioUI(); });
+  el.ghTokenInput.addEventListener("input", () => { settings.ghToken = el.ghTokenInput.value.trim(); saveSettings(); renderStudioUI(); try{updateConnectorDots();}catch{} });
   el.netlifySiteIdInput.addEventListener("input", () => { settings.netlifySiteId = el.netlifySiteIdInput.value.trim(); saveSettings(); renderStudioUI(); });
   el.netlifyTokenInput.addEventListener("input", () => { settings.netlifyToken = el.netlifyTokenInput.value.trim(); saveSettings(); renderStudioUI(); });
   el.webhookUrlInput.addEventListener("input", () => { settings.webhookUrl = el.webhookUrlInput.value.trim(); saveSettings(); renderStudioUI(); });
   el.webhookTokenInput.addEventListener("input", () => { settings.webhookToken = el.webhookTokenInput.value.trim(); saveSettings(); });
-  if(el.supabaseUrlInput) el.supabaseUrlInput.addEventListener("input", () => { settings.supabaseUrl = el.supabaseUrlInput.value.trim(); saveSettings(); });
-  if(el.supabaseKeyInput) el.supabaseKeyInput.addEventListener("input", () => { settings.supabaseKey = el.supabaseKeyInput.value.trim(); saveSettings(); });
+  if(el.supabaseUrlInput) el.supabaseUrlInput.addEventListener("input", () => { settings.supabaseUrl = el.supabaseUrlInput.value.trim(); saveSettings(); try{updateConnectorDots();}catch{} });
+  if(el.supabaseKeyInput) el.supabaseKeyInput.addEventListener("input", () => { settings.supabaseKey = el.supabaseKeyInput.value.trim(); saveSettings(); try{updateConnectorDots();}catch{} });
 
   el.secAuditEnabledToggle.addEventListener("change", () => {
     settings.secAuditEnabled = Boolean(el.secAuditEnabledToggle.checked);
@@ -9976,7 +10072,7 @@
   });
 
   // Composer events
-  el.promptInput.addEventListener("input", autoResizeTextarea);
+  el.promptInput.addEventListener("input", ()=>{ autoResizeTextarea(); try{ localStorage.setItem(DRAFT_KEY, el.promptInput.value);}catch{} });
   el.promptInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -10128,9 +10224,95 @@
     }
   });
 
+  // ── Command Palette (Claude-like Cmd+K) ─────────────────────────────────
+  function buildCmdkItems(q){
+    const query = (q||"").trim().toLowerCase();
+    const items=[];
+    // Actions
+    items.push({ label:"New chat", hint:"⌘N", action:()=>{ createChat(); el.promptInput?.focus(); }});
+    items.push({ label:"Toggle Web Studio", hint:"Studio", action:()=>{ if(studio.open) closeStudio(); else openStudio(); }});
+    items.push({ label:"Toggle Sidebar", hint:"Sidebar", action:()=>{ el.sidebar?.classList.toggle("collapsed"); }});
+    items.push({ label: isOfflineActive() ? "Go Online" : "Go Offline (No-WiFi)", hint:"Offline", action:()=>{ settings.offlineMode=!isOfflineActive(); saveSettings(); syncOfflineUI(true); }});
+    // Models (top 8 matching)
+    for(const m of models.slice(0,25)){
+      if(query && !m.id.toLowerCase().includes(query) && !(m.display_name||"").toLowerCase().includes(query)) continue;
+      items.push({ label:`Model: ${m.display_name||m.id}`, hint:m.provider, action:()=>{ selectModelById(m.id); }});
+    }
+    // Chats matching query
+    for(const c of chats.slice(0,30)){
+      if(!query || c.title.toLowerCase().includes(query)) items.push({ label:`Chat: ${c.title}`, hint:"Chat", action:()=>{ switchChat(c.id); }});
+    }
+    return items.filter(it => !query || it.label.toLowerCase().includes(query) || (it.hint||"").toLowerCase().includes(query)).slice(0,12);
+  }
+  function openCmdk(){
+    const overlay = document.getElementById("cmdkOverlay");
+    const input = document.getElementById("cmdkInput");
+    const list = document.getElementById("cmdkList");
+    if(!overlay||!input||!list) return;
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden","false");
+    input.value="";
+    renderCmdkList("");
+    setTimeout(()=> input.focus(), 10);
+  }
+  function closeCmdk(){
+    const overlay=document.getElementById("cmdkOverlay");
+    if(overlay){ overlay.classList.remove("open"); overlay.setAttribute("aria-hidden","true"); }
+    el.promptInput?.focus();
+  }
+  function switchChat(id){
+    const found = chats.find(c=> c.id===id);
+    if(!found) return;
+    activeChatId = id;
+    saveChats();
+    renderChatList();
+    renderMessages();
+    // close drawer on mobile
+    if(window.innerWidth <= 820) el.sidebar?.classList.add("collapsed");
+  }
+  function renderCmdkList(q){
+    const list=document.getElementById("cmdkList");
+    if(!list) return;
+    const items=buildCmdkItems(q);
+    list.innerHTML = items.map((it,i)=>`<div class="cmdk-item ${i===0?"active":""}" data-cmdk-idx="${i}"><span>${escHtml(it.label)}</span><span class="cmdk-kbd">${escHtml(it.hint||"")}</span></div>`).join("") || `<div style="padding:16px;color:var(--text-muted);font-size:13px;">No results</div>`;
+    list.querySelectorAll(".cmdk-item").forEach((el,i)=>{
+      el.addEventListener("click", ()=>{ items[i]?.action(); closeCmdk(); });
+    });
+  }
   // Global keyboard shortcuts
   window.addEventListener("keydown", (e) => {
+    // Cmd+K palette
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      const overlay=document.getElementById("cmdkOverlay");
+      if(overlay?.classList.contains("open")) closeCmdk(); else openCmdk();
+      return;
+    }
+    // Palette typing / nav
+    const overlay=document.getElementById("cmdkOverlay");
+    if(overlay?.classList.contains("open")){
+      if(e.key==="Escape"){ e.preventDefault(); closeCmdk(); return; }
+      if(e.key==="ArrowDown" || e.key==="ArrowUp"){
+        e.preventDefault();
+        const items=[...document.querySelectorAll("#cmdkList .cmdk-item")];
+        const cur=items.findIndex(x=>x.classList.contains("active"));
+        items.forEach(x=>x.classList.remove("active"));
+        let nxt = e.key==="ArrowDown" ? Math.min(items.length-1, cur+1) : Math.max(0, cur-1);
+        if(cur===-1) nxt=0;
+        if(items[nxt]) items[nxt].classList.add("active");
+        return;
+      }
+      if(e.key==="Enter"){
+        e.preventDefault();
+        const active=document.querySelector("#cmdkList .cmdk-item.active");
+        const idx=active ? Number(active.dataset.cmdkIdx) : 0;
+        const q=document.getElementById("cmdkInput")?.value||"";
+        const items=buildCmdkItems(q);
+        if(items[idx]){ items[idx].action(); closeCmdk(); }
+        return;
+      }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
       e.preventDefault();
       if (isStreaming) activeAbortController?.abort();
       createChat();
@@ -10143,6 +10325,13 @@
       }
     }
   });
+  // Palette wiring (after keyboard handler is bound)
+  setTimeout(()=>{
+    const ci=document.getElementById("cmdkInput");
+    const co=document.getElementById("cmdkOverlay");
+    if(ci) ci.addEventListener("input", (e)=> renderCmdkList(e.target.value));
+    if(co) co.addEventListener("click", (e)=>{ if(e.target===co) closeCmdk(); });
+  }, 300);
 
   // ── Static Checks & Failover Unit Tests (run on every load, report in console & toast) ─────────
   function runStaticChecks() {

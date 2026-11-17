@@ -2429,7 +2429,22 @@
     <div class="workspace-split">
       <div class="chat-pane">
         <section class="messages-wrap" id="messagesWrap">
-          <div class="messages-inner" id="messagesInner"></div>
+          <div class="messages-inner" id="messagesInner">
+            <!-- Static fallback — visible instantly before JS runs, and if JS fails -->
+            <div class="empty-state" id="staticEmptyState">
+              <div class="empty-badge"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;"></span> ABLITERATED + NON-ABLITERATED AI · ZERO API KEYS · AUTO-FAILOVER ACTIVE</div>
+              <h1 class="empty-title">Run <span>Online Keyless AI</span> — Abliterated &amp; Non-Abliterated.</h1>
+              <p class="empty-desc"><strong style="color:var(--accent);">Loading 25 instant models…</strong> — zero keys, zero limits. If this stays, your browser blocked scripts — try opening the downloaded <code class="inline-code">.html</code> directly in Chrome/Edge.</p>
+              <div class="offline-alert show" id="staticLoadingHint" style="margin:10px 0; padding:10px 12px; border-radius:10px; background:var(--accent-soft); border:1px solid var(--accent-border); display:flex; align-items:center; gap:10px; font-size:12.5px;">
+                <span class="spinner" style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin 0.7s linear infinite;"></span>
+                <span>Loading app… If this hangs, <button type="button" class="btn-secondary" onclick="location.reload()" style="padding:2px 8px;font-size:11px;">Reload</button> <button type="button" class="btn-secondary" onclick="try{localStorage.clear();location.reload()}catch(e){location.reload()}" style="padding:2px 8px;font-size:11px;">Reset Data</button></span>
+              </div>
+              <div class="quick-grid">
+                <div class="quick-card" style="opacity:0.6; pointer-events:none;"><span class="quick-card-tag">Standby</span><span class="quick-card-title">App is loading…</span><span class="quick-card-sub">JavaScript is initializing</span></div>
+              </div>
+            </div>
+            <noscript><div style="padding:24px; text-align:center; color:#f87171; background:#1f1212; border:1px solid #7f1d1d; border-radius:12px; margin:20px;"><strong>JavaScript is disabled</strong><br/>This app needs JavaScript to run. Enable it or open the file in Chrome/Edge/Firefox.</div></noscript>
+          </div>
         </section>
 
         <footer class="composer-dock">
@@ -9171,6 +9186,7 @@ let studio = loadStudioState();
   }
 
   function renderEmptyState() {
+    try{ const se=document.getElementById("staticEmptyState"); if(se) se.remove(); }catch{}
     const webTag = !isOfflineActive() && settings.webEnabled
       ? "ABLITERATED + NON-ABLITERATED AI · ZERO API KEYS · AUTO-FAILOVER ACTIVE"
       : "ABLITERATED + NON-ABLITERATED AI · ZERO API KEYS · OFFLINE READY";
@@ -9473,7 +9489,8 @@ let studio = loadStudioState();
   }
 
   function renderMessages() {
-    // Optimistic: ensure container scrolls instantly for new messages 
+    // Hide static fallback once JS is alive
+    try{ const se=document.getElementById("staticEmptyState"); if(se) se.style.display="none"; const sl=document.getElementById("staticLoadingHint"); if(sl) sl.style.display="none"; }catch{}
     const chat = getActiveChat();
     if (!chat || !chat.messages.length) {
       renderEmptyState();
@@ -11402,6 +11419,7 @@ let studio = loadStudioState();
   window.addEventListener("unhandledrejection", (e)=>{ console.warn("Unhandled rejection:", e.reason); });
 
   async function init() {
+    const defer=(fn)=>{ if("requestIdleCallback" in window) requestIdleCallback(fn,{timeout:2000}); else setTimeout(fn,400); };
     const step=(name, fn)=>{ try{ fn(); }catch(e){ console.warn(`init:${name} failed`, e); try{ showToast(`⚠ ${name} issue — use Fix Everything`);}catch{} } };
     try { performance.mark("ablit-init-start"); } catch {}
     step("theme", ()=> syncThemeUI());
@@ -11415,7 +11433,9 @@ let studio = loadStudioState();
     setTimeout(()=>{ try{ wireHealthToggles(); renderHiddenModelsManager(); updateHiddenBanner(); }catch(e){ console.warn(e)} }, 600);
     step("autoHeal", ()=> autoHealIfNeeded());
     step("messages", ()=> renderMessages());
-    refreshStudioPreview();
+    // Focus prompt instantly even if other steps failed
+    try{ el.promptInput?.focus(); }catch{}
+    defer(()=> { try{ refreshStudioPreview(); }catch{} });
     renderStudioUI();
     if (window.innerWidth <= 820) el.sidebar.classList.add("collapsed");
     // Run static checks & failover unit tests immediately (non-blocking, console output for verification)
@@ -11435,19 +11455,18 @@ let studio = loadStudioState();
     el.promptInput.focus();
     // Mark performance for TTFT tracking
     try { performance.mark("ablit-startup-ready"); performance.measure("ablit-startup", "ablit-init-start", "ablit-startup-ready"); } catch {}
-    // Run proxy detection and IndexedDB stale-cache cleanup concurrently — non-blocking
+    // Run proxy detection and IndexedDB stale-cache cleanup concurrently — non-blocking, deferred so first paint is instant
     const startupBg = Promise.all([
       detectSameOriginProxy(),
       pruneStaleCachedBrowserModels()
     ]);
-    // Pre-warm fastest model metadata in background (no await)
     startupBg.then(()=> {
       updateFooterHint();
-      // Fire-and-forget background sync so first prompt is instant
       if (!isOfflineActive()) syncAiHordeModels().catch(()=>{});
     });
-    await startupBg.catch(()=>{});
+    // Don’t block UI on startupBg — update footer immediately, let background finish lazily
     updateFooterHint();
+    defer(()=> startupBg.catch(()=>{}));
 
     if (isOfflineActive()) {
       await syncOfflineUI(true);

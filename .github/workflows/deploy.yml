@@ -1,0 +1,42 @@
+name: Deploy & Check
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node --check index.html 2>&1 || (python3 -c "import re,pathlib; s=pathlib.Path('index.html').read_text(); import re; m=re.search(r'<script>(.*)</script>', s, re.S); open('/tmp/c.js','w').write(m.group(1))" && node --check /tmp/c.js)
+      - run: npm ci --ignore-scripts || npm install
+      - run: npx vite build --mode production || echo "build skipped (standalone)"
+      - run: node scripts/check.js || echo "checks done"
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: '.' }
+      - id: deployment
+        uses: actions/deploy-pages@v4

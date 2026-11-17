@@ -1,0 +1,30 @@
+{
+  "name": "abliterated-ai",
+  "version": "9.0.0",
+  "description": "Abliterated + Non-Abliterated AI Runner — Auto-Race, Offline ONNX, Web Studio, PWA",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173 --open",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "proxy": "node server/proxy.js",
+    "dev:all": "concurrently \"npm run proxy\" \"npm run dev\"",
+    "check": "node scripts/check.js",
+    "format": "prettier --write \"**/*.{js,json,md,css}\"",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "concurrently": "^8.2.2",
+    "vitest": "^1.6.0",
+    "prettier": "^3.3.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["ai", "abliterated", "llm", "offline", "pwa", "horde", "pollinations"],
+  "license": "MIT",
+  "repository": "socks275/abliterated.ai"
+}

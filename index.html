@@ -1884,6 +1884,29 @@
     pointer-events: auto;
     border-left-width: 1px;
   }
+  .studio-resize-handle {
+    width: 6px;
+    min-width: 6px;
+    cursor: col-resize;
+    background: transparent;
+    position: relative;
+    flex-shrink: 0;
+    display: none;
+  }
+  .studio-resize-handle::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+    border-radius: 99px;
+  }
+  .studio-resize-handle:hover::after, .studio-resize-handle.dragging::after { background: var(--accent); }
+  .studio-pane.open ~ .studio-resize-handle, .studio-pane.open + .studio-resize-handle { display: block; }
+  .studio-pane.open { position: relative; }
+
 
   .studio-header {
     display: flex;
@@ -2158,6 +2181,20 @@
 
     <div class="chat-list" id="chatList"></div>
 
+    <details class="sidebar-projects" id="sidebarProjects" style="margin:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);">
+      <summary style="padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
+        <span>📁 Projects & Knowledge</span><span style="font-size:10px;color:var(--text-muted);" id="projectsCount">0 files</span>
+      </summary>
+      <div style="padding:8px 10px;border-top:1px solid var(--border);">
+        <div id="projectsList" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <label class="studio-btn" style="flex:1;justify-content:center;cursor:pointer;"><input type="file" id="projectsFileInput" hidden multiple accept=".txt,.md,.json,.csv,.js,.ts,.py,.html,.css" />+ Add Files</label>
+          <button class="studio-btn" id="clearProjectsBtn" title="Clear all project knowledge">Clear</button>
+        </div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:6px;">Files here become persistent context in every prompt (like Claude Projects). Stored locally only.</div>
+      </div>
+    </details>
+
     <div class="sidebar-footer">
       <div class="conn-pill" id="connPill" title="Click to scan local unlimited abliterated models" style="cursor:pointer;">
         <div class="conn-left">
@@ -2256,6 +2293,8 @@
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                   Force Search
                 </button>
+                <button class="chip-btn" id="enhancePromptBtn" title="✨ Enhance prompt for powerful code (like Claude)" style="background:var(--accent-soft);border-color:var(--accent-border);">✨ Enhance</button>
+                <label class="chip-btn" title="Attach text/PDF/JSON files as context (Projects)" style="cursor:pointer;"><input type="file" id="attachFileInput" hidden multiple accept=".txt,.md,.json,.csv,.js,.ts,.py,.html,.css,.pdf" />📎 Files</label>
                 <button class="chip-btn" id="fetchUrlPromptBtn" title="Quickly insert a URL to read & summarize">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                   Read URL
@@ -2277,7 +2316,7 @@
           </div>
           <div class="composer-hint">
             <span id="hintLeft">100% Unlimited Abliterated AI · Zero API Keys · Keyless Live Web Agent</span>
-            <span id="hintRight">Shift+Enter newline · Paste/drop images</span>
+            <span id="hintRight">Shift+Enter newline · Paste/drop files & images · ✨ Enhance</span>
           </div>
         </footer>
       </div>
@@ -2343,6 +2382,7 @@
           <span id="studioStatusRight">Ready · Powerful Code · Unlimited</span>
         </div>
       </section>
+      <div class="studio-resize-handle" id="studioResizeHandle" title="Drag to resize — double-click to reset"></div>
     </div>
   </main>
 </div>
@@ -3005,7 +3045,7 @@
     webMode: "agent",
     maxToolRounds: 6,
     temperature: 0.7,
-    maxTokens: 16384, // unlimited power: default 16k, UI allows up to 262k
+    maxTokens: 262144, // ULTRA POWER: default 262K (full context) — Horde auto-clamps to 512, others use full blast
     systemPrompt: "",
     webEditorEnabled: true,
     ghRepo: "",
@@ -3040,7 +3080,18 @@
   let sessionId = "ablit-web-" + Math.random().toString(36).slice(2, 10);
   const authorizedAuditHosts = new Set();
 
-  let studio = loadStudioState();
+  const PROJECTS_KEY = "ablit_projects_v1";
+function loadProjects(){
+  try{
+    const raw = localStorage.getItem(PROJECTS_KEY);
+    if(raw){ const arr=JSON.parse(raw); if(Array.isArray(arr)) return arr; }
+  }catch{}
+  return [];
+}
+function saveProjects(){ try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects)); }catch{} }
+let projects = loadProjects(); // [{name,size,text}]
+
+let studio = loadStudioState();
   let studioFileHandle = null;
 
   function loadStudioState() {
@@ -3292,6 +3343,38 @@
     } catch {}
     if (Array.isArray(PORTABLE_STATE?.chats)) return PORTABLE_STATE.chats;
     return [];
+  }
+
+  function renderProjects(){
+    const listEl = document.getElementById("projectsList");
+    const countEl = document.getElementById("projectsCount");
+    if(!listEl) return;
+    if(!projects.length){
+      listEl.innerHTML = `<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px;">No project files yet</div>`;
+      if(countEl) countEl.textContent = "0 files";
+      return;
+    }
+    if(countEl) countEl.textContent = `${projects.length} file${projects.length===1?"":"s"} · ${(projects.reduce((a,b)=>a+(b.text?.length||0),0)/1024).toFixed(1)}KB`;
+    listEl.innerHTML = projects.map((p,i)=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-canvas);border:1px solid var(--border);border-radius:6px;">
+        <span style="flex:1;min-width:0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${p.name} (${p.text.length} chars)">${p.name}</span>
+        <span style="font-size:10px;color:var(--text-muted);">${(p.text.length/1024).toFixed(1)}KB</span>
+        <button data-del-project="${i}" style="font-size:11px;padding:2px 6px;border-radius:4px;background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger);">×</button>
+      </div>`).join("");
+  }
+
+  function buildProjectsContext(){
+    if(!projects.length) return "";
+    const total = projects.reduce((a,b)=>a+(b.text?.length||0),0);
+    const cap = 12000; // don't blow context
+    let out = "\n\n[PROJECT KNOWLEDGE — persistent files attached like Claude Projects. Use this context when relevant]:\n";
+    for(const p of projects){
+      const snippet = p.text.slice(0, cap);
+      out += `\n--- ${p.name} (${p.text.length} chars) ---\n${snippet}\n`;
+      if(out.length > cap) break;
+    }
+    if(total > cap) out += "\n(knowledge truncated to fit context)\n";
+    return out.slice(0, cap+500);
   }
 
   function saveChats() {
@@ -7105,7 +7188,7 @@
 
     try {
       const temp = Math.min(1.5, Math.max(0.05, Number(settings.temperature ?? 0.7)));
-      const maxNew = Math.min(1024, Math.max(64, Number(settings.maxTokens) || 512));
+      const maxNew = Math.min(2048, Math.max(64, Number(settings.maxTokens) || 512)); // ultra power: allow 2K in-browser (ONNX stable)
       const hasTemplate = Boolean(generator.tokenizer?.chat_template);
       const modelInput = hasTemplate
         ? browserMessages
@@ -8196,7 +8279,19 @@
     const activeTools = provCfg.provider === "browser"
       ? []
       : getActiveToolDefinitions(webOn, "agent", modelObj, lastUserPrompt, requireSearchThisTurn);
-    const apiMessages = buildApiMessages(historyChat, webOn, provCfg.provider === "browser" ? null : activeTools);
+    // Inject Projects Knowledge as context (like Claude Projects) — prepend to first user message
+    let apiMessages = buildApiMessages(historyChat, webOn, provCfg.provider === "browser" ? null : activeTools);
+    try{
+      const projCtx = buildProjectsContext();
+      if(projCtx){
+        const firstUserIdx = apiMessages.findIndex(m=> m.role==="user");
+        if(firstUserIdx!==-1){
+          const orig = apiMessages[firstUserIdx].content;
+          const origText = typeof orig==="string" ? orig : (Array.isArray(orig)? orig.map(p=>p.text||"").join("\n") : String(orig));
+          apiMessages[firstUserIdx].content = origText + projCtx;
+        }
+      }
+    }catch{}
 
     const addSources = (list) => {
       const existing = new Set(assistantMsg.sources.map(s => s.url));
@@ -8275,7 +8370,8 @@
       }
 
       // 3. OpenAI-Compatible Keyless Cloud (AI Horde Auto-Race & Workers · Pollinations ChatGPT · LLM7) & Local Servers (Ollama · LM Studio) + Keyless Web Agent & Web Studio Tools
-      const maxRounds = activeTools.length ? Math.max(2, Number(settings.maxToolRounds) || 6) : 1;
+      const wantsUnlimitedBuild = _isBuildIntentEarly && /(<html|function|class |import |=>|<!doctype)/i.test(lastUserPrompt + " " + (activeTools.length?"tool":"")) ? true : _isBuildIntentEarly;
+      const maxRounds = wantsUnlimitedBuild ? Math.max(6, Number(settings.maxToolRounds) || 6) : (activeTools.length ? Math.max(2, Number(settings.maxToolRounds) || 6) : 1);
       let pinnedRaceWinnerObj = null;
 
       for (let round = 0; round < maxRounds; round++) {
@@ -8386,7 +8482,7 @@
           continue;
         }
 
-        // UNLIMITED CODE: if model hit token limit mid-code, auto-continue without asking user (up to 3 extra rounds)
+        // UNLIMITED CODE: if model hit token limit mid-code, auto-continue without asking user (up to 5 extra rounds — truly unlimited)
         if (lastFinishReason === "length" && _isBuildIntentEarly && round < maxRounds - 1) {
           const looksLikeCode = /<html|<!doctype|<script|<style|<div|<canvas|function\s+\w+|=>|import\s/.test(roundContent) || roundContent.trim().endsWith("<") || (!/<\/html>/i.test(assistantMsg.content) && assistantMsg.content.length > 800);
           if (looksLikeCode || roundContent.length > 400) {
@@ -10098,10 +10194,30 @@
     el.composerBox.classList.add("drag-over");
   });
   el.composerBox.addEventListener("dragleave", () => el.composerBox.classList.remove("drag-over"));
-  el.composerBox.addEventListener("drop", (e) => {
+  el.composerBox.addEventListener("drop", async (e) => {
     e.preventDefault();
     el.composerBox.classList.remove("drag-over");
-    if (e.dataTransfer?.files?.length) addImageFiles(e.dataTransfer.files);
+    const files=[...e.dataTransfer?.files||[]];
+    if(!files.length) return;
+    const imgs=files.filter(f=> f.type.startsWith("image/"));
+    const docs=files.filter(f=> !f.type.startsWith("image/"));
+    if(imgs.length) addImageFiles(imgs);
+    if(docs.length){
+      let added="";
+      for(const f of docs){
+        try{
+          const text=await f.text();
+          added += `\n\n[FILE: ${f.name}]\n${text.slice(0,10000)}`;
+          if(text.length<30000) projects.push({ name:f.name, size:f.size, text:text.slice(0,30000) });
+        }catch{}
+      }
+      if(added){
+        el.promptInput.value = (el.promptInput.value ? el.promptInput.value + "\n" : "") + added.trim();
+        autoResizeTextarea();
+        saveProjects(); renderProjects(); showToast(`Dropped ${docs.length} file(s)`);
+        try{ localStorage.setItem("ablit_composer_draft", el.promptInput.value);}catch{}
+      }
+    }
   });
 
   el.attachImgBtn.addEventListener("click", () => el.imageFileInput.click());
@@ -10516,6 +10632,119 @@
   }
 
   init();
+  // ── Powerful Resizable Split (Claude Artifacts-like) ──────────────────────
+  (function(){
+    const handle = document.getElementById("studioResizeHandle");
+    const pane = document.getElementById("studioPane");
+    if(!handle || !pane) return;
+    const KEY="ablit_studio_width";
+    try{
+      const saved = localStorage.getItem(KEY);
+      if(saved && pane.classList.contains("open")) pane.style.width = saved;
+    }catch{}
+    let dragging=false, startX=0, startW=0;
+    const onMove = (e)=>{
+      if(!dragging) return;
+      const dx = e.clientX - startX;
+      const newW = Math.max(380, Math.min(window.innerWidth*0.75, startW - dx));
+      // pane is on right, dragging left expands it: we use width
+      // Simpler: set width directly
+      pane.style.width = newW + "px";
+    };
+    const onUp = ()=>{
+      if(!dragging) return;
+      dragging=false;
+      handle.classList.remove("dragging");
+      document.body.style.cursor="";
+      document.body.style.userSelect="";
+      try{ localStorage.setItem(KEY, pane.style.width); }catch{}
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+    const onDown = (e)=>{
+      if(!pane.classList.contains("open")) return;
+      dragging=true;
+      handle.classList.add("dragging");
+      startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+      startW = pane.getBoundingClientRect().width;
+      document.body.style.cursor="col-resize";
+      document.body.style.userSelect="none";
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      window.addEventListener("touchmove", onMove, {passive:false});
+      window.addEventListener("touchend", onUp);
+      e.preventDefault();
+    };
+    handle.addEventListener("mousedown", onDown);
+    handle.addEventListener("touchstart", onDown, {passive:false});
+    handle.addEventListener("dblclick", ()=>{
+      pane.style.width="50%";
+      try{ localStorage.removeItem(KEY); }catch{}
+      showToast("Reset split to 50%");
+    });
+  })();
+
+  // ── Projects wiring ─────────────────────────────────────────────────────
+  setTimeout(()=>{
+    renderProjects();
+    document.getElementById("projectsFileInput")?.addEventListener("change", async (e)=>{
+      const files=[...e.target.files||[]];
+      for(const f of files){
+        try{
+          const text=await f.text();
+          const sliced=text.slice(0, 30000);
+          projects.push({ name:f.name, size:f.size, text:sliced });
+        }catch{}
+      }
+      saveProjects(); renderProjects(); showToast(`Added ${files.length} file(s) to Projects`);
+      e.target.value="";
+    });
+    document.getElementById("projectsList")?.addEventListener("click", (e)=>{
+      const btn=e.target.closest("[data-del-project]");
+      if(!btn) return;
+      const idx=Number(btn.dataset.delProject);
+      projects.splice(idx,1); saveProjects(); renderProjects();
+    });
+    document.getElementById("clearProjectsBtn")?.addEventListener("click", ()=>{
+      if(!projects.length) return;
+      if(!confirm("Clear all Project Knowledge files?")) return;
+      projects=[]; saveProjects(); renderProjects(); showToast("Cleared Projects");
+    });
+    // Attach generic files as composer context (also add to projects)
+    document.getElementById("attachFileInput")?.addEventListener("change", async (e)=>{
+      const files=[...e.target.files||[]];
+      let added="";
+      for(const f of files){
+        try{
+          const text=await f.text();
+          added += `\n\n[FILE: ${f.name}]\n${text.slice(0,8000)}`;
+          // also auto-add to projects for persistence
+          if(text.length < 30000) projects.push({ name:f.name, size:f.size, text:text.slice(0,30000) });
+        }catch{}
+      }
+      if(added){
+        el.promptInput.value = (el.promptInput.value ? el.promptInput.value + "\n" : "") + added.trim();
+        autoResizeTextarea();
+        saveProjects(); renderProjects();
+        showToast(`Attached ${files.length} file(s)`);
+        try{ localStorage.setItem("ablit_composer_draft", el.promptInput.value);}catch{}
+      }
+      e.target.value="";
+    });
+    // Enhance prompt (powerful rewrite)
+    document.getElementById("enhancePromptBtn")?.addEventListener("click", ()=>{
+      const v=el.promptInput.value.trim();
+      if(!v){ showToast("Type a prompt first to enhance"); return; }
+      const enhanced = `You are a principal staff engineer + elite designer. TASK: ${v}\n\nREQUIREMENTS: Fully runnable single-file HTML5 (inline <style> + <script>), Tailwind CDN, responsive + dark mode, a11y, micro-interactions, confetti/parallax polish. Add localStorage, real data, skeletons, empty states. Ship PRODUCTION-GRADE app-store quality — never truncate. Think step-by-step then build.`;
+      el.promptInput.value = enhanced;
+      autoResizeTextarea();
+      try{ localStorage.setItem("ablit_composer_draft", enhanced);}catch{}
+      showToast("✨ Enhanced for powerful build");
+    });
+  }, 500);
+
 })();
 </script>
 <!-- Cloudflare challenge iframe removed for pure standalone file:// speed --></body>

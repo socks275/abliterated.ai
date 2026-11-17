@@ -4116,6 +4116,46 @@
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escTitle}</title><style>body{font-family:system-ui;max-width:900px;margin:0 auto;padding:32px;line-height:1.7;background:#fff;color:#111}pre{background:#f3f4f6;padding:16px;border-radius:8px;overflow:auto;white-space:pre-wrap}</style></head><body><h1>${escTitle}</h1><pre>${escHtml(raw.slice(0,12000))}</pre><script>console.log('auto-wrapped text doc');<\/script></body></html>`;
   }
 
+  function extractHtmlFromAssistantText(text){
+    if(!text || !text.trim()) return null;
+    // Prefer fenced blocks (```html ... ``` ```js ... ``` etc)
+    const fences = [...String(text).matchAll(/```(?:html|htm|js|javascript|css|jsx|tsx|svg|xml)?\s*\n?([\s\S]*?)```/gi)];
+    let longest = "";
+    for(const m of fences){
+      const c = (m[1]||"").trim();
+      if(c.length > longest.length && (/<html|<!doctype|<script|<style|<div|<canvas|<svg|function\s+\w+|=>|import\s|export\s/i.test(c))) longest = c;
+    }
+    if(longest && longest.length > 120) return longest;
+    // Raw <!DOCTYPE html> ... </html> without fences
+    const rawDoctype = String(text).match(/<!DOCTYPE html[\s\S]{120,}<\/html>/i);
+    if(rawDoctype) return rawDoctype[0];
+    const rawHtml = String(text).match(/<html[\s\S]{150,}<\/html>/i);
+    if(rawHtml) return rawHtml[0];
+    return null;
+  }
+
+  function autoCaptureCodeToStudio(assistantText, triggerText){
+    try{
+      if(!assistantText) return false;
+      // Don't duplicate if AI already used tool (toolEvents present)
+      const html = extractHtmlFromAssistantText(assistantText);
+      if(!html || html.length < 120) return false;
+      // Heuristic: only auto-capture when user asked to build/code/create OR assistant clearly produced a page
+      const ctx = String((triggerText||"") + " " + assistantText.slice(0,600)).toLowerCase();
+      const wantsBuild = /build|create|make|generate|clone|website|webpage|web page|app|game|tool|html|page|component|design|layout|landing|portfolio/i.test(ctx);
+      if(!wantsBuild && html.length < 400) return false;
+      // Avoid overwriting identical doc
+      if(studio.html && studio.html.trim() === html.trim()) return false;
+      if(studio.html && studio.html.includes(html.slice(0,80)) && Math.abs(studio.html.length - html.length) < 20) return false;
+      // Infer filename from <title>
+      const tMatch = html.match(/<title>(.*?)<\/title>/i);
+      const fname = tMatch ? (tMatch[1].trim().replace(/[^a-z0-9._-]+/gi,"_").slice(0,28) || "index") + ".html" : "index.html";
+      setStudioHtml(html, { filename: fname, pushHistory: true, openPanel: true });
+      showToast("✨ Auto-loaded your code into Web Studio — live preview on the right!");
+      return true;
+    }catch(e){ return false; }
+  }
+
   function wrapMarkdownAsEditableHtml(md, sourceUrl) {
     const titleMatch = md.match(/^title:\s*"?([^"\n]+)"?/m);
     const title = titleMatch ? titleMatch[1].trim() : getDomain(sourceUrl || "webpage");
@@ -4537,7 +4577,7 @@
       type: "function",
       function: {
         name: "web_studio_write",
-        description: "Create or replace the complete code document inside Web Studio (HTML, CSS, JS, React/Vue component, SVG, etc.) — it auto-renders live instantly with all JavaScript executed.",
+        description: "MANDATORY when user asks to build/create/make a website/app/game/tool/page — create/replace the COMPLETE single-file HTML document (inline <style> + <script>) inside Web Studio; it auto-runs live instantly in ONE unified sandbox iframe. Never just output code as text.",
         parameters: {
           type: "object",
           properties: {
@@ -6927,10 +6967,11 @@
         ? `Web Studio currently has "${studio.filename}" loaded (${studio.html.length} chars${studio.sourceUrl ? ", cloned from " + studio.sourceUrl : ""}).`
         : "Web Studio is currently blank.";
       parts.push(
-        "You also have Live Web Editing & Publishing tools inside Web Studio: web_studio_get, web_studio_load_url, web_studio_write, web_studio_patch, web_publish_github, web_publish_netlify, and web_publish_webhook.",
+        "🔴 CRITICAL — WEB STUDIO AUTORUN RULE: Web Studio is a SINGLE unified sandboxed iframe (srcdoc) on the right that runs ALL HTML + CSS + JavaScript together — inline <style> and <script> execute instantly, no separate preview needed. When the user asks you to build / create / make / code / generate / edit / redesign a website, app, game, tool, page, component — you MUST call \`web_studio_write\` with the COMPLETE single-file HTML document (include inline <style> and <script>; all JS/CSS must be inline so it runs in one sandbox). Do NOT just output code as markdown/text in chat — that will NOT run. If you have code to show, it MUST be delivered via \`web_studio_write\` so it appears live in Preview.",
         studioInfo,
-        "When the user asks you to build, edit, redesign, or clone a webpage: use web_studio_load_url to pull a live webpage into Web Studio, web_studio_get to inspect current HTML, web_studio_write to create/rewrite a complete polished single-file HTML/CSS/JS page, or web_studio_patch for targeted edits — the live preview updates immediately beside the chat.",
-        "When the user asks to publish changes live to their own website, call web_publish_github, web_publish_netlify, or web_publish_webhook (the browser prompts the user for confirmation). Be transparent that only sites the user configures/owns can be published live; third-party sites are edited locally in Web Studio."
+        "Tools: web_studio_load_url (clone any URL into Studio via universal proxy engine), web_studio_get (inspect Code tab), web_studio_write (create/replace entire document — ALL code auto-runs live in one sandbox), web_studio_patch (targeted find/replace), web_publish_github / web_publish_netlify / web_publish_webhook (publish user's own site after confirm).",
+        "Workflow: 1) If user gives a URL to clone → web_studio_load_url first. 2) To build new → web_studio_write one polished single-file HTML/CSS/JS. 3) To tweak → web_studio_get then web_studio_patch. 4) Only after writing to Studio, briefly summarize what was built in chat. Never ask user to copy/paste your code block — you write it to Studio for them.",
+        "Publishing: only for sites the user owns/configures (GitHub/Netlify/Webhook in Settings). Confirm before publish; third-party clones stay local in Studio."
       );
     }
     if (hasSecTools && settings.secAuditEnabled !== false) {
@@ -7998,6 +8039,17 @@
         }
       }
     } finally {
+      // Auto-capture: if AI typed HTML/JS code as text instead of calling web_studio_write, auto-inject it into Web Studio so it actually RUNS in one sandbox
+      try{
+        if(!failoverModelObj && assistantMsg.content && assistantMsg.content.trim()){
+          const usedTools = Array.isArray(assistantMsg.toolEvents) && assistantMsg.toolEvents.length > 0;
+          // Only auto-capture when AI didn't already render via tool — prevents double write
+          if(!usedTools){
+            autoCaptureCodeToStudio(assistantMsg.content, lastUserPrompt);
+          }
+        }
+      }catch(e){}
+
       assistantMsg.streaming = Boolean(failoverModelObj);
       assistantMsg.elapsedSec = (performance.now() - startedAt) / 1000;
       isStreaming = false;

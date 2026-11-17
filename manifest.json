@@ -1,0 +1,73 @@
+{
+  "name": "abliterated.ai — Unlimited Abliterated AI Runner",
+  "short_name": "abliterated",
+  "description": "Abliterated + Non-Abliterated AI • Auto-Race ⚡ Fastest GPU • Sticky Failover • Live Web • Web Studio • Offline ONNX • Zero API keys",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay"],
+  "orientation": "any",
+  "background_color": "#09090b",
+  "theme_color": "#f59e0b",
+  "categories": ["productivity", "developer", "education"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Chat",
+      "short_name": "Chat",
+      "description": "Start a new abliterated chat",
+      "url": "./index.html?new",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Web Studio",
+      "short_name": "Studio",
+      "description": "Open Web Studio editor",
+      "url": "./index.html?studio",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "handle_links": "preferred",
+  "protocol_handlers": [
+    {
+      "protocol": "web+abliterated",
+      "url": "./index.html?prompt=%s"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "icons/screenshot.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Chat with abliterated & non-abliterated models"
+    }
+  ]
+}

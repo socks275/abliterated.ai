@@ -38,6 +38,25 @@ All show `Text only` vs `Text + Vision` badges, grouped Abliterated / Non-Ablite
 - `index.html` — **main app** (GitHub Pages + standalone download). Improved SEO/OG/PWA, preconnects, 9700 lines, zero externals.
 - `standalone` download via in-app **Download HTML** button produces `abliteration-runner.html` / portable `__PORTABLE_STATE__`.
 
+
+## Beyond single-file HTML — now amazing ✨
+
+This repo is **not just** `index.html` anymore. It's a full PWA + backend + deploy stack that *still* runs `file://` with zero build:
+
+| File | Why it's amazing |
+|------|------------------|
+| `manifest.json` + `icons/` | Installable PWA, offline home-screen app, shortcuts |
+| `sw.js` | Cache-first offline, network-first APIs, survives no-WiFi |
+| `server/proxy.js` | Local CORS proxy for Ollama/Horde/HF when hosted |
+| `vite.config.js` + `package.json` | `npm run dev` HMR, `npm run build` → `dist/`, `npm run dev:all` |
+| `.github/workflows/deploy.yml` | Auto Pages deploy + checks |
+| `src/README.md` | Future modular split without losing standalone magic |
+| `icons/icon.svg` → PNGs | Real icons, not data-URI |
+
+**Install:** Open on Chrome/Edge → prompt → *Install App* button (top bar) → standalone offline PWA.
+**Dev:** `npm i && npm run dev:all` — Vite on :5173 proxied to :8787.
+**Still standalone:** `index.html` alone still works `file://` — extra files just make it better when hosted.
+
 ## Dev
 
 No build step. Edit `index.html`, commit, push. Static checks + failover unit tests run on load (see console `window.__ablitStaticChecks`).

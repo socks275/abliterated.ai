@@ -19,7 +19,11 @@
 <meta name="twitter:description" content="Standalone HTML AI Runner — abliterated + non-abliterated, auto-race, offline, no API keys." />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23f59e0b'/><path d='M38 18 L62 18 L55 42 L68 42 L32 82 L42 48 L28 48 Z' fill='%2309090b'/></svg>" />
 <link rel="canonical" href="https://socks275.github.io/abliterated.ai/" />
-<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiYWJsaXRlcmF0ZWQuYWkiLCJzaG9ydF9uYW1lIjoiYWJsaXRlcmF0ZWQiLCJzdGFydF91cmwiOiIuLyIsImRpc3BsYXkiOiJzdGFuZGFsb25lIiwiYmFja2dyb3VuZF9jb2xvciI6IiMwOTA5MGIiLCJ0aGVtZV9jb2xvciI6IiNmNTllMGIiLCJpY29ucyI6W119" />
+<link rel="manifest" href="./manifest.json" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+<meta name="theme-color" content="#f59e0b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="robots" content="index, follow" />
 <link rel="preconnect" href="https://oai.aihorde.net" />
 <link rel="preconnect" href="https://text.pollinations.ai" />
@@ -2415,6 +2419,7 @@
           <span id="webToggleLabel">Web Access: ON</span>
         </button>
 
+        <button class="download-html-btn" id="installPwaBtn" onclick="installPwa()" title="Install app (PWA) — offline ready" style="display:none; background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent);">Install App</button>
         <button class="download-html-btn" id="downloadHtmlBtn" title="Download this entire app as a single standalone .html file (runs directly in any browser, zero server required)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           <span>Download HTML</span>
@@ -11498,6 +11503,14 @@ let studio = loadStudioState();
     }
   }
 
+  // PWA: register SW when hosted (file:// skips)
+  if('serviceWorker' in navigator && location.protocol !== 'file:'){
+    navigator.serviceWorker.register('./sw.js').then(()=> console.log('[PWA] SW ready')).catch(()=>{});
+    let deferredPrompt=null;
+    window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; const b=document.getElementById('installPwaBtn'); if(b) b.style.display='inline-flex'; });
+    window.addEventListener('appinstalled', ()=> showToast('✓ Installed — offline ready'));
+    window.installPwa=()=>{ if(deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.then(c=>{ if(c.outcome==='accepted') showToast('✓ Installing…'); deferredPrompt=null; }); } };
+  }
   init();
   // ── Powerful Resizable Split (Claude Artifacts-like) ──────────────────────
   (function(){

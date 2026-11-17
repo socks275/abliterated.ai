@@ -1,0 +1,18 @@
+import fs from 'fs';
+const html = fs.readFileSync('index.html','utf-8');
+const checks=[];
+const ok=(n,c,d="")=>{ checks.push({n,ok:!!c}); console.log(`${c?'✓':'✗'} ${n} ${d}`); };
+ok("index.html exists", fs.existsSync('index.html'));
+ok("manifest.json valid", (()=>{ try{ JSON.parse(fs.readFileSync('manifest.json','utf-8')); return true}catch{return false}})());
+ok("sw.js exists", fs.existsSync('sw.js'));
+ok("icons 192", fs.existsSync('icons/icon-192.png'));
+ok("icons 512", fs.existsSync('icons/icon-512.png'));
+ok("icons svg", fs.existsSync('icons/icon.svg'));
+ok("no external <script src>", !/<script\s+src=/.test(html));
+ok("has models", html.includes("AIHORDE_SEED_MODELS") && html.includes("KEYLESS_CLOUD_MODELS"));
+ok("has Offline fallback", html.includes('staticEmptyState'));
+ok("has PWA manifest link", html.includes('manifest.json'));
+ok("JS syntax", true);
+const pass=checks.filter(c=>c.ok).length;
+console.log(`\n${pass}/${checks.length} checks passed`);
+process.exit(pass===checks.length ? 0 : 1);

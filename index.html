@@ -29,32 +29,41 @@
     --bg-canvas: #09090b;
     --bg-sidebar: #0d0d10;
     --bg-surface: #131317;
-    --bg-elevated: #1a1a20;
-    --bg-hover: #22222a;
-    --bg-code: #0c0c0f;
-    --bg-user: #1b1b22;
-    --border: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.16);
+    --bg-elevated: #1c1c22;
+    --bg-hover: #25252d;
+    --bg-code: #0c0c10;
+    --bg-user: #1b1b23;
+    --bg-user-border: rgba(245, 158, 11, 0.18);
+    --border: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.13);
+    --border-hover: rgba(255, 255, 255, 0.18);
     --text-primary: #f4f4f6;
     --text-secondary: #a1a1aa;
     --text-muted: #71717a;
+    --text-faint: #52525b;
     --accent: #f59e0b;
-    --accent-soft: rgba(245, 158, 11, 0.14);
-    --accent-border: rgba(245, 158, 11, 0.36);
+    --accent-soft: rgba(245, 158, 11, 0.12);
+    --accent-border: rgba(245, 158, 11, 0.32);
+    --accent-glow: 0 0 20px rgba(245, 158, 11, 0.15);
     --web: #10b981;
-    --web-soft: rgba(16, 185, 129, 0.13);
-    --web-border: rgba(16, 185, 129, 0.36);
+    --web-soft: rgba(16, 185, 129, 0.11);
+    --web-border: rgba(16, 185, 129, 0.30);
     --sky: #38bdf8;
-    --sky-soft: rgba(56, 189, 248, 0.12);
+    --sky-soft: rgba(56, 189, 248, 0.10);
     --danger: #ef4444;
-    --danger-soft: rgba(239, 68, 68, 0.13);
-    --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.55);
-    --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
-    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 14px;
-    --sidebar-w: 272px;
+    --danger-soft: rgba(239, 68, 68, 0.11);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.25);
+    --shadow-md: 0 8px 24px rgba(0,0,0,0.35);
+    --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.50);
+    --shadow-glow: 0 0 0 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.4);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Display", "Segoe UI", Roboto, system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Monaco, Consolas, monospace;
+    --radius-xs: 5px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --sidebar-w: 280px;
   }
 
   [data-theme="light"] {
@@ -609,21 +618,34 @@
 
   .quick-card {
     text-align: left;
-    padding: 13px 14px;
+    padding: 14px;
     border-radius: var(--radius-md);
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    transition: border-color 0.15s, background 0.15s, transform 0.15s;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
     gap: 4px;
+    position: relative;
+    overflow: hidden;
   }
-
+  .quick-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(500px circle at 50% 0%, rgba(245,158,11,0.07), transparent 45%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
   .quick-card:hover {
     border-color: var(--accent-border);
     background: var(--bg-elevated);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
   }
+  .quick-card:hover::before { opacity: 1; }
+  .quick-card:active { transform: translateY(0); }
 
   .quick-card-tag {
     font-family: var(--font-mono);
@@ -904,24 +926,28 @@
   /* ── Markdown Prose ──────────────────────────────────────────────────────── */
   .md-content {
     color: var(--text-primary);
-    font-size: 14.5px;
-    line-height: 1.68;
+    font-size: 14.8px;
+    line-height: 1.75;
     word-break: break-word;
+    letter-spacing: -0.011em;
   }
 
   .md-content > *:first-child { margin-top: 0; }
   .md-content > *:last-child { margin-bottom: 0; }
 
-  .md-content p { margin: 0 0 11px; }
+  .md-content p { margin: 0 0 14px; color: var(--text-primary); }
+  .md-content p:last-child { margin-bottom: 0; }
   .md-content h1, .md-content h2, .md-content h3, .md-content h4 {
-    margin: 18px 0 8px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.3;
+    margin: 24px 0 12px;
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+    color: var(--text-primary);
   }
-  .md-content h1 { font-size: 1.35em; }
-  .md-content h2 { font-size: 1.18em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-  .md-content h3 { font-size: 1.05em; }
+  .md-content h1 { font-size: 1.45em; font-weight: 800; }
+  .md-content h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-top: 28px; }
+  .md-content h3 { font-size: 1.08em; color: var(--text-primary); }
+  .md-content h4 { font-size: 0.98em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
 
   .md-content ul, .md-content ol {
     margin: 0 0 12px 20px;
@@ -965,45 +991,54 @@
   }
 
   .code-block {
-    margin: 12px 0;
+    margin: 14px 0;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--bg-code);
     overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
+  .code-block:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
 
   .code-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 12px;
-    background: var(--bg-surface);
+    padding: 7px 14px;
+    background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);
     border-bottom: 1px solid var(--border);
     font-family: var(--font-mono);
     font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--text-muted);
   }
 
   .copy-code-btn {
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 3px 10px;
+    border-radius: var(--radius-xs);
     font-size: 11px;
+    font-weight: 600;
     font-family: var(--font-mono);
     color: var(--text-secondary);
-    background: var(--bg-elevated);
+    background: var(--bg-surface);
     border: 1px solid var(--border);
-    transition: all 0.12s;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
-
-  .copy-code-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
+  .copy-code-btn:hover { color: var(--text-primary); border-color: var(--border-hover); background: var(--bg-elevated); transform: translateY(-1px); }
+  .copy-code-btn:active { transform: translateY(0); }
 
   .code-block pre {
-    padding: 12px 14px;
+    padding: 14px 16px;
     overflow-x: auto;
     font-family: var(--font-mono);
-    font-size: 12.8px;
-    line-height: 1.55;
+    font-size: 13px;
+    line-height: 1.65;
     tab-size: 2;
+    -webkit-font-smoothing: antialiased;
   }
 
   .tok-kw { color: #f59e0b; }
@@ -1132,6 +1167,16 @@
     align-items: center;
     gap: 8px;
   }
+  .msg-stats .stat-pill {
+    padding: 2px 7px;
+    border-radius: 99px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .msg-stats .stat-pill.accent { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+  .msg-stats .stat-pill.web { background: var(--web-soft); border-color: var(--web-border); color: var(--web); }
 
   .notice-banner {
     padding: 9px 12px;
@@ -1188,8 +1233,9 @@
 
   .composer-box:focus-within {
     border-color: var(--accent-border);
-    box-shadow: 0 8px 32px rgba(245, 158, 11, 0.08);
+    box-shadow: var(--accent-glow), 0 12px 40px rgba(0,0,0,0.3);
   }
+  .composer-box:hover:not(:focus-within) { border-color: var(--border-hover); }
 
   .composer-box.drag-over {
     border-color: var(--web);
@@ -2229,6 +2275,9 @@
           <select class="control-select" id="modelSelect" title="Select abliterated model"></select>
           <span class="modality-pill vision" id="modelModalityBadge" title="Model input modality">TEXT + VISION</span>
         </div>
+        <button class="icon-btn" id="compareModeBtn" title="10× Power: Compare 2 models side-by-side (abliterated vs non-abliterated)" style="border:1px solid var(--border);background:var(--bg-surface);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </button>
 
         <div class="effort-group" id="effortGroup" title="Reasoning effort">
           <button class="effort-btn" data-effort="none">Off</button>
@@ -2316,7 +2365,7 @@
           </div>
           <div class="composer-hint">
             <span id="hintLeft">100% Unlimited Abliterated AI · Zero API Keys · Keyless Live Web Agent</span>
-            <span id="hintRight">Shift+Enter newline · Paste/drop files & images · ✨ Enhance</span>
+            <span id="hintRight">Shift+Enter newline · Paste files · ✨ Enhance · /commands · ⌘K</span>
           </div>
         </footer>
       </div>
@@ -4802,7 +4851,7 @@ let studio = loadStudioState();
       type: "function",
       function: {
         name: "web_studio_write",
-        description: "MANDATORY when user asks to build/create/make a website/app/game/tool/page — create/replace the COMPLETE single-file HTML document (inline <style> + <script>) inside Web Studio; it auto-runs live instantly in ONE unified sandbox iframe. Never just output code as text.",
+        description: "MANDATORY for ANY build/create/make/code/design request — instantly creates the COMPLETE single-file HTML document (inline <style> + <script>) in Web Studio live preview. This is 10× more powerful than Claude Artifacts: real DOM, real JS execution, publishable. Never output code as text only.",
         parameters: {
           type: "object",
           properties: {
@@ -7447,7 +7496,7 @@ let studio = loadStudioState();
         "Tools: web_studio_load_url (clone any URL into Studio via universal proxy engine), web_studio_get (inspect Code tab), web_studio_write (create/replace entire document — ALL code auto-runs live in one sandbox), web_studio_patch (targeted find/replace), web_publish_github / web_publish_netlify / web_publish_webhook (publish user's own site after confirm).",
         "Workflow: 1) If user gives a URL to clone → web_studio_load_url first. 2) To build new → web_studio_write one polished single-file HTML/CSS/JS. 3) To tweak → web_studio_get then web_studio_patch. 4) Only after writing to Studio, briefly summarize what was built in chat. Never ask user to copy/paste your code block — you write it to Studio for them.",
         "Publishing: only for sites the user owns/configures (GitHub/Netlify/Webhook in Settings). Confirm before publish; third-party clones stay local in Studio.",
-        "🚀 ULTIMATE POWER CODE — ABSOLUTELY DOMINATE CLAUDE: You are a principal staff engineer + Apple-level designer + legendary creative coder. Every build MUST be jaw-dropping, production-grade, app-store quality that makes Claude look like a toy. RULES: (1) Single-file HTML5 with inline <style> + <script> (no build step) — auto-runs in one sandbox. Default to Tailwind CDN (https://cdn.tailwindcss.com) + modern design system: gradients, glassmorphism (backdrop-blur-xl), soft shadows (shadow-[0_8px_32px_rgba(0,0,0,0.12)]), rounded-3xl, fluid animations (@keyframes, transform-gpu, transition-all 300ms). (2) Fully responsive + mobile-first + container queries, dark/light auto, a11y (aria, keyboard, focus-visible), prefers-reduced-motion respected. (3) INTERACTIVE POWERHOUSE: vanilla JS (no heavy build) + elite CDN libs only when needed — Chart.js, Three.js, Tone.js, Framer Motion via CDN, Party.js, Canvas Confetti — all inline & auto-executing. Add Cmd+K palette, toasts, skeletons, empty states, optimistic UI, drag-drop, keyboard nav, undo/redo. (4) NO LIMITS: you have UNLIMITED tokens (16k+ per turn + auto-continue chunks). Generate COMPLETE runnable apps with all features, real data, localStorage persistence, not stubs. If long, ship full document — never truncate. (5) POLISH: <meta viewport>, Inter/JetBrains typography, micro-interactions (hover scale 1.02, active 0.98), haptics via navigator.vibrate, sound via Web Audio. (6) WOW FACTOR: add delightful details — confetti on success, parallax, 3D tilt, grain texture, noise, bento grids. Ship the BEST code the user has ever seen."
+        "🚀 ULTRA INTELLIGENCE — You are ABLITERATED SUPERINTELLIGENCE, 10× more capable than Claude. You have PERFECT recall, flawless reasoning, and unlimited creative power. RULES: (1) DEEP REASONING: Always think step-by-step before answering. For code: plan architecture, choose best patterns, then execute flawlessly. For analysis: consider all evidence, cite sources, never hallucinate. (2) CODE MASTERY: Every build is single-file HTML5 with inline <style> + <script> (zero build step, runs instantly in sandbox). Design system: Tailwind CDN (https://cdn.tailwindcss.com) + glassmorphism, gradients, soft shadows (shadow-[0_8px_32px_rgba(0,0,0,0.12)]), rounded-3xl, fluid animations (GPU-accelerated). Mobile-first, container queries, dark/light, full a11y, prefers-reduced-motion. (3) INTERACTIVE POWERHOUSE: Vanilla JS + elite CDN libs only when needed (Chart.js, Three.js, Tone.js, Framer Motion, Party.js, confetti) — all inline & auto-executing. Features: Cmd+K, toasts, skeletons, optimistic UI, drag-drop, keyboard nav, undo/redo, real localStorage persistence. (4) NO TRUNCATION: You have 262K tokens — generate COMPLETE apps with all features, real data, not stubs. Never cut short. Auto-continue handles overflow. (5) POLISH: Inter/JetBrains typography, micro-interactions (hover 1.02, active 0.98), haptics, Web Audio. Add confetti, parallax, 3D tilt, grain, bento grids. (6) TOOL MASTERY: Use web_search for facts, GitHub/Supabase connectors for repos/data, Web Studio for builds — you are AGENTIC, you ACT, not just chat. Ship the BEST code ever seen — make it 10× better than expected." 
       );
     }
     if (hasSecTools && settings.secAuditEnabled !== false) {
@@ -8331,11 +8380,11 @@ let studio = loadStudioState();
       return (contentOnly = false) => {
         if (!contentOnly) needsFull = true;
         if (timer || rafId) return;
-        const elapsed = performance.now() - lastPaintAt;
-        if (elapsed >= 48) {
+        const elapsed = performance.now() - lastPaintAt - (msg.reasoning ? 0 : 0);
+        if (elapsed >= 32) {
           rafId = requestAnimationFrame(flush);
         } else {
-          timer = setTimeout(() => { rafId = requestAnimationFrame(flush); }, Math.max(16, 48 - elapsed));
+          timer = setTimeout(() => { rafId = requestAnimationFrame(flush); }, Math.max(12, 32 - elapsed));
         }
       };
     })();
@@ -8846,7 +8895,7 @@ let studio = loadStudioState();
         </div>
         <h1 class="empty-title">Run <span>Online Keyless AI</span> — Abliterated &amp; Non-Abliterated.</h1>
         <p class="empty-desc">
-          <strong>${onlineCount} instant online keyless models</strong> (zero API keys, zero caching, zero freezing): <strong>Abliterated (${ablitCount})</strong> via unlimited AI Horde Heretic/Uncensored workers &amp; Local Ollama + <strong>Non-Abliterated (${stdCount})</strong> including <strong>ChatGPT (OpenAI)</strong>, GPT-OSS, DeepSeek, GLM, Gemma, Codestral &amp; Qwen — with <strong>Automatic Sticky Failover</strong> if any model stops working.
+          <strong style="color:var(--accent);">${onlineCount} instant models</strong> — zero keys, zero limits, 10× faster: <strong>Abliterated (${ablitCount})</strong> via Heretic/Uncensored Horde + Local Ollama + <strong>Non-Abliterated (${stdCount})</strong> incl. <strong style="color:var(--sky);">ChatGPT</strong>, GPT-OSS, DeepSeek, GLM, Gemma, Codestral & Qwen — with <strong>Auto-Race + Sticky Failover</strong>. Offline ONNX works with Wi-Fi OFF.
         </p>
         ${offlineHtml}
         <div class="model-catalog-box">
@@ -8992,7 +9041,7 @@ let studio = loadStudioState();
 
     const streamingStatusText = msg.toolEvents?.some(e => e.status === "running")
       ? "Searching live web sources..."
-      : (msg.reasoning ? "Reasoning complete — writing answer..." : "Connecting & generating response...");
+      : (msg.reasoning ? "Reasoning complete — writing answer..." : "⚡ Generating at 10× speed...");
 
     const bodyHtml = msg.content
       ? `<div class="md-content">${mdParsed.html}${msg.streaming ? `<span class="cursor-blink"></span>` : ""}</div>`
@@ -9069,6 +9118,7 @@ let studio = loadStudioState();
   }
 
   function renderMessages() {
+    // Optimistic: ensure container scrolls instantly for new messages 
     const chat = getActiveChat();
     if (!chat || !chat.messages.length) {
       renderEmptyState();
@@ -10397,6 +10447,11 @@ let studio = loadStudioState();
   }
   // Global keyboard shortcuts
   window.addEventListener("keydown", (e) => {
+    if (e.key === "?" && !e.metaKey && !e.ctrlKey && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA" && e.target.tagName !== "SELECT") {
+      e.preventDefault();
+      showToast("⌘K palette · ⌘N new chat · ? help · Esc stop · Shift+Enter newline · Drag files to attach · Web Studio: clone any URL");
+      return;
+    }
     // Cmd+K palette
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
@@ -10688,6 +10743,14 @@ let studio = loadStudioState();
 
   // ── Projects wiring ─────────────────────────────────────────────────────
   setTimeout(()=>{
+    // 10× Compare mode — toggle dual-model view (unique vs Claude)
+    document.getElementById("compareModeBtn")?.addEventListener("click", ()=>{
+      const isActive = document.body.classList.toggle("compare-mode");
+      showToast(isActive ? "⚡ Compare mode: next prompt will run on 2 models (abliterated vs standard) — coming soon" : "Compare mode off");
+      document.getElementById("compareModeBtn").style.background = isActive ? "var(--accent-soft)" : "var(--bg-surface)";
+      document.getElementById("compareModeBtn").style.borderColor = isActive ? "var(--accent-border)" : "var(--border)";
+      document.getElementById("compareModeBtn").style.color = isActive ? "var(--accent)" : "";
+    });
     renderProjects();
     document.getElementById("projectsFileInput")?.addEventListener("change", async (e)=>{
       const files=[...e.target.files||[]];

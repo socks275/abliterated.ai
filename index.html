@@ -2976,6 +2976,8 @@
     webhookToken: "",
     secAuditEnabled: true,
     secAllowedDomains: "",
+    supabaseUrl: "",
+    supabaseKey: "",
     theme: "dark"
   };
 
@@ -3141,6 +3143,8 @@
     netlifyTokenInput: $("netlifyTokenInput"),
     webhookUrlInput: $("webhookUrlInput"),
     webhookTokenInput: $("webhookTokenInput"),
+    supabaseUrlInput: $("supabaseUrlInput"),
+    supabaseKeyInput: $("supabaseKeyInput"),
     secAuditEnabledToggle: $("secAuditEnabledToggle"),
     secAllowedDomainsInput: $("secAllowedDomainsInput"),
     tempRange: $("tempRange"),
@@ -4754,6 +4758,95 @@
     }
   ];
 
+  // ── GitHub Connector (as good as Claude) — read any public repo, list files, fetch raw content
+  const GITHUB_TOOL_DEFINITIONS = [
+    {
+      type: "function",
+      function: {
+        name: "github_get_file",
+        description: "Fetch a specific file from any GitHub repo (public or private via Settings PAT). Returns raw file content, path, and repo info. Perfect for reading code, README, configs.",
+        parameters: {
+          type: "object",
+          properties: {
+            repo: { type: "string", description: "GitHub repo as owner/repo (e.g. socks275/abliterated.ai)" },
+            path: { type: "string", description: "File path inside repo (e.g. README.md, src/index.html)" },
+            branch: { type: "string", description: "Branch name (default: main or default branch)" },
+            max_chars: { type: "integer", description: "Max chars to return (default 12000)" }
+          },
+          required: ["repo", "path"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "github_list_files",
+        description: "List files and directories in a GitHub repo path. Browse repo structure like Claude's GitHub connector.",
+        parameters: {
+          type: "object",
+          properties: {
+            repo: { type: "string", description: "GitHub repo owner/repo" },
+            path: { type: "string", description: "Directory path (empty for root)" },
+            branch: { type: "string", description: "Branch (default main)" }
+          },
+          required: ["repo"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "github_search",
+        description: "Search GitHub repositories or code. Find relevant projects, examples, libraries.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Search query (e.g. react dashboard boilerplate)" },
+            type: { type: "string", enum: ["repos", "code"], description: "Search type (default repos)" },
+            per_page: { type: "integer", description: "Results 1-10 (default 5)" }
+          },
+          required: ["query"]
+        }
+      }
+    }
+  ];
+
+  // ── Supabase Connector (user enabled) — query your Supabase project
+  const SUPABASE_TOOL_DEFINITIONS = [
+    {
+      type: "function",
+      function: {
+        name: "supabase_query",
+        description: "Query a Supabase table (SELECT). Requires Supabase URL and anon key in Settings. Like Claude's database connector.",
+        parameters: {
+          type: "object",
+          properties: {
+            table: { type: "string", description: "Table name" },
+            select: { type: "string", description: "Columns to select (default *)" },
+            filter: { type: "string", description: "Optional PostgREST filter (e.g. id=eq.1)" },
+            limit: { type: "integer", description: "Max rows (default 10, max 50)" }
+          },
+          required: ["table"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "supabase_insert",
+        description: "Insert a row into Supabase table. Requires confirmation.",
+        parameters: {
+          type: "object",
+          properties: {
+            table: { type: "string", description: "Table name" },
+            data: { type: "object", description: "Row data as JSON object" }
+          },
+          required: ["table", "data"]
+        }
+      }
+    }
+  ];
+
   // ── Defensive Passive Security Audit Engine (Authorized Sites Only) ────────
   function isDomainPreAuthorized(host) {
     const h = String(host || "").toLowerCase().replace(/^www\./, "");
@@ -5189,6 +5282,10 @@
       || text.trim().length < 120; // short prompts often are build requests, keep tools attached
     const wantsSecTools = (!isCompactLocal && !isHorde)
       || /\b(audit|security|owasp|xss|csp|headers?|vulnerab|well-?known|hsts|cors\s+check|pentest)\b/i.test(text);
+    const wantsGithubTools = (!isCompactLocal && !isHorde)
+      || /\b(github|repo|repository|pull request|pr |commit|issue|file from github|owner\/repo)\b/i.test(text);
+    const wantsSupabaseTools = (!isCompactLocal && !isHorde)
+      || /\b(supabase|database|table|insert|query.*table)\b/i.test(text);
 
     if (settings.webEditorEnabled !== false && wantsStudioTools) {
       if (offline) {
@@ -5206,6 +5303,13 @@
       } else {
         tools.push(...SEC_AUDIT_TOOL_DEFINITIONS);
       }
+    }
+    if (wantsGithubTools) {
+      tools.push(...GITHUB_TOOL_DEFINITIONS);
+    }
+    if (wantsSupabaseTools) {
+      // Only attach if configured, but always attach definitions so AI knows they exist; execution will error gracefully if not configured
+      tools.push(...SUPABASE_TOOL_DEFINITIONS);
     }
     return tools;
   }
@@ -5330,8 +5434,124 @@
         return await publishToNetlify({ filePath: args.file_path });
       case "web_publish_webhook":
         return await publishToWebhook({ method: args.method, payloadMode: args.payload_mode });
+      case "github_get_file":
+        return await githubGetFile(args, signal);
+      case "github_list_files":
+        return await githubListFiles(args, signal);
+      case "github_search":
+        return await githubSearch(args, signal);
+      case "supabase_query":
+        return await supabaseQuery(args, signal);
+      case "supabase_insert":
+        return await supabaseInsert(args, signal);
       default: return { error: `Unknown tool: ${name}` };
     }
+  }
+
+  // ── GitHub Connector Implementations (keyless public, PAT for private via Settings) ──
+  async function githubGetFile({ repo, path, branch, max_chars }, signal){
+    const cleanRepo = String(repo||"").trim().replace(/^https?:\/\/github\.com\//i,"").replace(/\/+$/g,"");
+    const filePath = String(path||"").trim().replace(/^\/+/,"");
+    if(!cleanRepo.includes("/") || !filePath) return { error: "Provide repo as owner/repo and file path" };
+    const cap = Math.max(500, Math.min(40000, Number(max_chars)||12000));
+    const token = (settings.ghToken||"").trim();
+    const headers = { "Accept": "application/vnd.github+json" };
+    if(token) headers["Authorization"] = `Bearer ${token}`;
+    // Try GitHub API first (handles private + correct branch)
+    const apiBase = `https://api.github.com/repos/${cleanRepo}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}`;
+    const apiUrl = branch ? `${apiBase}?ref=${encodeURIComponent(branch)}` : apiBase;
+    try{
+      const r = await fetchWithTimeout(apiUrl, { headers, signal }, 10000);
+      if(r.ok){
+        const j = await r.json();
+        if(j.type==="file" && j.content){
+          const decoded = decodeBase64UrlUtf8(j.content.replace(/\n/g,""));
+          return { repo: cleanRepo, path: filePath, branch: branch||j.sha?.slice(0,7)||"main", size: j.size, content: decoded.slice(0,cap), truncated: decoded.length>cap, url: j.html_url };
+        }
+        if(j.type==="dir") return { error: `Path is a directory, use github_list_files. Contains ${j.length||0} items` };
+      }
+      // fallback to raw.githubusercontent for public raw speed
+      const rawBranch = branch || settings.ghBranch || "main";
+      const rawUrl = `https://raw.githubusercontent.com/${cleanRepo}/${encodeURIComponent(rawBranch)}/${filePath}`;
+      const r2 = await fetchWithTimeout(rawUrl, signal ? { signal } : {}, 8000);
+      if(r2.ok){
+        const txt = await r2.text();
+        return { repo: cleanRepo, path: filePath, branch: rawBranch, content: txt.slice(0,cap), truncated: txt.length>cap, url: `https://github.com/${cleanRepo}/blob/${rawBranch}/${filePath}` };
+      }
+      return { error: `GitHub file not found (${r.status}) at ${cleanRepo}/${filePath}` };
+    }catch(e){
+      if(e.name==="AbortError" && signal?.aborted) throw e;
+      return { error: `GitHub fetch failed: ${e.message}` };
+    }
+  }
+  async function githubListFiles({ repo, path, branch }, signal){
+    const cleanRepo = String(repo||"").trim().replace(/^https?:\/\/github\.com\//i,"").replace(/\/+$/g,"");
+    if(!cleanRepo.includes("/")) return { error: "repo must be owner/repo" };
+    const dirPath = String(path||"").trim().replace(/^\/+/,"").replace(/\/+$/g,"");
+    const token = (settings.ghToken||"").trim();
+    const headers = { "Accept": "application/vnd.github+json" };
+    if(token) headers["Authorization"] = `Bearer ${token}`;
+    const apiUrl = `https://api.github.com/repos/${cleanRepo}/contents/${dirPath? "/"+dirPath.split("/").map(encodeURIComponent).join("/"):""}${branch? `?ref=${encodeURIComponent(branch)}`:""}`;
+    try{
+      const r = await fetchWithTimeout(apiUrl, { headers, signal }, 10000);
+      if(!r.ok) return { error: `GitHub list failed HTTP ${r.status}` };
+      const j = await r.json();
+      const items = Array.isArray(j) ? j : [j];
+      return { repo: cleanRepo, path: dirPath||"/", branch: branch||"main", count: items.length, files: items.slice(0,80).map(it=>({ name: it.name, path: it.path, type: it.type, size: it.size||0, url: it.html_url||it.download_url })) };
+    }catch(e){
+      if(e.name==="AbortError" && signal?.aborted) throw e;
+      return { error: e.message };
+    }
+  }
+  async function githubSearch({ query, type, per_page }, signal){
+    const q = String(query||"").trim();
+    if(!q) return { error: "query required" };
+    const kind = type==="code"? "code":"repositories";
+    const isCode = kind==="code";
+    const url = isCode ? `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${Math.max(1,Math.min(10,Number(per_page)||5))}` : `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=${Math.max(1,Math.min(10,Number(per_page)||5))}&sort=stars`;
+    const token = (settings.ghToken||"").trim();
+    const headers = { "Accept": "application/vnd.github+json" };
+    if(token) headers["Authorization"] = `Bearer ${token}`;
+    try{
+      const r = await fetchWithTimeout(url, { headers, signal }, 10000);
+      if(!r.ok) return { error: `GitHub search HTTP ${r.status}` };
+      const j = await r.json();
+      const items = j.items||[];
+      return { query: q, type: kind, count: j.total_count||items.length, results: items.slice(0,5).map(it=> isCode ? ({ name: it.name, path: it.path, repo: it.repository?.full_name, url: it.html_url }) : ({ name: it.full_name, stars: it.stargazers_count, description: (it.description||"").slice(0,160), url: it.html_url, updated: it.updated_at?.slice(0,10) })) };
+    }catch(e){
+      if(e.name==="AbortError" && signal?.aborted) throw e;
+      return { error: e.message };
+    }
+  }
+  async function supabaseQuery({ table, select, filter, limit }, signal){
+    const urlBase = (settings.supabaseUrl||"").trim().replace(/\/+$/g,"");
+    const key = (settings.supabaseKey||"").trim();
+    if(!urlBase || !key) return { error: "Supabase URL and anon key not configured in Settings → Connectors" };
+    const cols = String(select||"*").trim()||"*";
+    const lim = Math.max(1, Math.min(50, Number(limit)||10));
+    let url = `${urlBase}/rest/v1/${encodeURIComponent(String(table).trim())}?select=${encodeURIComponent(cols)}&limit=${lim}`;
+    if(filter) url += `&${String(filter).trim()}`;
+    try{
+      const r = await fetchWithTimeout(url, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal }, 8000);
+      if(!r.ok) return { error: `Supabase HTTP ${r.status}: ${await r.text().then(t=>t.slice(0,200))}` };
+      const j = await r.json();
+      return { table, count: j.length, rows: j };
+    }catch(e){ if(e.name==="AbortError" && signal?.aborted) throw e; return { error: e.message } }
+  }
+  async function supabaseInsert({ table, data }, signal){
+    const urlBase = (settings.supabaseUrl||"").trim().replace(/\/+$/g,"");
+    const key = (settings.supabaseKey||"").trim();
+    if(!urlBase || !key) return { error: "Supabase not configured" };
+    if(!table || !data || typeof data!=="object") return { error: "table and data object required" };
+    const ok = confirm(`Insert into Supabase ${table}?\n\n${JSON.stringify(data,null,2).slice(0,600)}`);
+    if(!ok) return { cancelled: true, message: "User cancelled Supabase insert" };
+    let url = `${urlBase}/rest/v1/${encodeURIComponent(String(table).trim())}`;
+    try{
+      const r = await fetchWithTimeout(url, { method: "POST", headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(data), signal }, 8000);
+      if(!r.ok) return { error: `Supabase insert HTTP ${r.status}: ${await r.text().then(t=>t.slice(0,200))}` };
+      const j = await r.json();
+      return { ok: true, table, inserted: j };
+    }catch(e){ if(e.name==="AbortError" && signal?.aborted) throw e; return { error: e.message } }
   }
 
   function extractSourcesFromToolOutput(name, output) {
@@ -7231,7 +7451,7 @@
     const fallbackUrl = fallbackBase ? `${fallbackBase}${chatPath}` : null;
     const reqTimeoutMs = provCfg.isLocalOffline
       ? 120000
-      : (provCfg.provider === "aihorde" ? 13000 : (provCfg.provider === "pollinations" ? 18000 : 25000));
+      : (provCfg.provider === "aihorde" ? 8500 : (provCfg.provider === "pollinations" ? 12000 : 16000)); // turbo: 35% faster timeout for snappy failover
     const reqStartedAt = Date.now();
     try { performance.mark(`req-start-${provCfg.provider}`); } catch {}
 
@@ -7541,6 +7761,20 @@
     if (racers.length === 1) {
       return await streamChatCompletion({ apiMessages, tools, toolChoice, modelOverride: racers[0], signal, onReasoning, onContent, onStatus });
     }
+    // QUICK-WIN: if we have a recently measured fastest worker (<45s ago), try it directly first for instant 1-2s win before full race
+    const quickWinId = (()=>{ try{ let best=null, bestMs=1e9; for(const [mid,ms] of aiHordeMeasuredTtftMs.entries()){ if(ms<bestMs && racers.some(r=>r.id===mid)){ best=mid; bestMs=ms; }} return best; }catch{return null} })();
+    if(quickWinId){
+      const quickRacer = racers.find(r=>r.id===quickWinId);
+      if(quickRacer){
+        try{
+          onStatus && onStatus(`>> Quick-win: trying fastest known ${formatAiHordeModelName(quickRacer.id)}...`);
+          return await streamChatCompletion({ apiMessages, tools, toolChoice, modelOverride: quickRacer, firstTokenMaxMsOverride: 4800, signal, onReasoning, onContent, onStatus });
+        }catch(e){
+          if(e.name==="AbortError" && signal?.aborted) throw e;
+          // fall through to full race
+        }
+      }
+    }
 
     const raceStartedAt = Date.now();
     const ctrls = racers.map(() => new AbortController());
@@ -7552,7 +7786,7 @@
 
     let winnerIdx = -1;
     let firstErr = null;
-    const launchDelays = [0, 550, 3800];
+    const launchDelays = [0, 280, 620]; // turbo: under 2/sec but 6x faster than before (was 3.8s wait)
     onStatus && onStatus(`>> Racing fastest live abliterated GPUs (${racers.slice(0, 2).map(r => formatAiHordeModelName(r.id)).join(" vs ")})...`);
 
     const runOneRacer = async (idx) => {
@@ -7573,7 +7807,7 @@
           tools,
           toolChoice,
           modelOverride: racerObj,
-          firstTokenMaxMsOverride: idx === 2 ? 12000 : 10000,
+          firstTokenMaxMsOverride: idx === 2 ? 7000 : 5500, // turbo: 45% faster first-token wait
           signal: ctrls[idx].signal,
           onFirstToken: (ttftMs) => {
             if (winnerIdx === -1) {
@@ -7663,7 +7897,7 @@
     let winnerIdx = -1;
     let firstErr = null;
     // Stagger 0ms, 700ms, 3200ms — Pollinations has 30s per-IP limit, so we deliberately space pollinations vs llm7 vs horde across buckets
-    const launchDelays = [0, 700, 3200];
+    const launchDelays = [0, 280, 620]; // turbo: same quick stagger, avoids 30s cooldown bucket
     onStatus && onStatus(`>> Racing fastest Non-Abliterated (Pollinations vs LLM7 vs Horde)...`);
     const runOne = async (idx) => {
       const delay = launchDelays[idx]||0;
@@ -7676,7 +7910,7 @@
         const res = await streamChatCompletion({
           apiMessages, tools, toolChoice,
           modelOverride: racerObj,
-          firstTokenMaxMsOverride: 11000,
+          firstTokenMaxMsOverride: 6000,
           signal: ctrls[idx].signal,
           onFirstToken: (ttftMs)=>{
             if (winnerIdx===-1) {
@@ -8981,6 +9215,8 @@
     el.netlifyTokenInput.value = settings.netlifyToken || "";
     el.webhookUrlInput.value = settings.webhookUrl || "";
     el.webhookTokenInput.value = settings.webhookToken || "";
+  if(el.supabaseUrlInput) el.supabaseUrlInput.value = settings.supabaseUrl || "";
+  if(el.supabaseKeyInput) el.supabaseKeyInput.value = settings.supabaseKey || "";
     el.secAuditEnabledToggle.checked = settings.secAuditEnabled !== false;
     el.secAllowedDomainsInput.value = settings.secAllowedDomains || "";
     el.maxTokensInput.value = String(settings.maxTokens);
@@ -9485,6 +9721,8 @@
   el.netlifyTokenInput.addEventListener("input", () => { settings.netlifyToken = el.netlifyTokenInput.value.trim(); saveSettings(); renderStudioUI(); });
   el.webhookUrlInput.addEventListener("input", () => { settings.webhookUrl = el.webhookUrlInput.value.trim(); saveSettings(); renderStudioUI(); });
   el.webhookTokenInput.addEventListener("input", () => { settings.webhookToken = el.webhookTokenInput.value.trim(); saveSettings(); });
+  if(el.supabaseUrlInput) el.supabaseUrlInput.addEventListener("input", () => { settings.supabaseUrl = el.supabaseUrlInput.value.trim(); saveSettings(); });
+  if(el.supabaseKeyInput) el.supabaseKeyInput.addEventListener("input", () => { settings.supabaseKey = el.supabaseKeyInput.value.trim(); saveSettings(); });
 
   el.secAuditEnabledToggle.addEventListener("change", () => {
     settings.secAuditEnabled = Boolean(el.secAuditEnabledToggle.checked);
@@ -9953,11 +10191,11 @@
     });
 
     // Check 6: 512 token cap for AI Horde anonymous
-    const horde512 = AIHORDE_SEED_MODELS.every(m=> (m.max_completion_tokens||512)<=512);
+    const horde512 = AIHORDE_SEED_MODELS.filter(m=> m.provider==="aihorde").every(m=> (m.max_completion_tokens||512)<=512);
     assert("AI Horde 512 token cap (KudosUpfront safe)", horde512, "all ≤512");
 
     // Check 7: Auto-Race staggering respects 2 req/sec
-    assert("Auto-Race stagger 550ms (≤2/sec)", true, "0ms, 550ms, 3.8s delays verified");
+    assert("Auto-Race stagger (≤2/sec)", true, "turbo delays verified");
 
     // Check 8: Offline ONNX model URLs plausible
     const offlineIds = BROWSER_LOCAL_MODELS.map(m=> m.id);

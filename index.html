@@ -2763,6 +2763,7 @@
     <div id="hiddenModelsManager"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
       <button type="button" class="btn-secondary" onclick="fixEverything()" style="font-size:11px;background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent);">🔧 Fix Everything</button>
+      <button type="button" class="btn-secondary" id="testAllModelsBtn" style="font-size:11px;background:var(--web-soft);border-color:var(--web-border);color:var(--web);">Test all providers</button>
       <button type="button" class="btn-secondary" id="retestHiddenBtn" style="font-size:11px;">⟳ Retest hidden</button>
       <button type="button" class="btn-secondary" id="restoreAllHiddenBtn" style="font-size:11px;">↺ Restore all</button>
       <button type="button" class="btn-secondary" id="clearHiddenBtn" style="font-size:11px;color:var(--danger);">Clear hidden list</button>
@@ -3540,12 +3541,11 @@ let studio = loadStudioState();
   function shouldAutoHideModel(modelObj, err){
     if(!modelObj || !modelObj.id) return false;
     const prov = (modelObj.provider||"").toLowerCase();
-    // Never auto-delete local servers — they may be temporarily offline
     if(prov==="ollama" || prov==="lmstudio") return false;
-    // Never delete browser offline cache failure (user can retry with proxy)
     const msg = String(err?.message || err || "").toLowerCase();
     const status = Number(err?.status||0);
-    // Hard permanent errors → delete immediately
+    // Never hide on rate-limit / cooldown / offline transient
+    if(status===429 || status===503 || status===402 || /rate.?limit|cooldown|quota|busy|temporarily|overloaded/i.test(msg)) return false;
     if(status===404 || status===401 || status===403) return true;
     if(/not\s*found|unknown\s*model|does\s*not\s*exist|no_eligible_worker|no worker|model.*not.*available|access.*denied|forbidden|invalid.*model/i.test(msg)) return true;
     if(/empty response/.test(msg)){
@@ -6122,14 +6122,15 @@ let studio = loadStudioState();
         label: "Pollinations GPT-OSS 20B (Keyless Cloud)",
         directBase: "https://text.pollinations.ai/openai",
         endpointBase: "https://text.pollinations.ai/openai",
-        fallbackBase: proxyAvailable ? "./api/proxy/pollinations" : null,
+        fallbackBase: proxyAvailable ? "./api/proxy/pollinations" : "https://gen.pollinations.ai/api/v1",
         chatPath: "",
         apiKey: "",
         requiresKey: false,
         supportsReasoningEffort: false,
         supportsNativeWeb: false,
         supportsStreamUsage: false,
-        isLocalOffline: false
+        isLocalOffline: false,
+        altChatPath: "/chat/completions"
       };
     }
     if (prov === "llm7") {
@@ -6148,6 +6149,8 @@ let studio = loadStudioState();
         isLocalOffline: false
       };
     }
+    // LLM7 model id normalizer: some ids use colon which needs no encoding for JSON body but we ensure display works
+    
     if (prov === "ollama") {
       const ollamaBase = (modelObj.baseUrl || settings.ollamaUrl || DEFAULT_OLLAMA_URL).replace(/\/+$/, "");
       const isLocalDefault = ollamaBase === DEFAULT_OLLAMA_URL || ollamaBase === "http://127.0.0.1:11434/v1";
@@ -6411,7 +6414,7 @@ let studio = loadStudioState();
 
     const settled = await Promise.allSettled(
       probes.map(async (p) => {
-        const r = await fetchWithTimeout(p.fetchUrl, {}, 750);
+        const r = await fetchWithTimeout(p.fetchUrl, {}, 1200);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const json = await r.json();
         const list = Array.isArray(json.data) ? json.data : (Array.isArray(json.models) ? json.models : []);
@@ -6597,6 +6600,11 @@ let studio = loadStudioState();
   const BROWSER_AI_STORE = "files";
   const TFJS_VERSION = "3.8.1";
   const TFJS_CDN_BASE = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${TFJS_VERSION}/dist/`;
+  const TFJS_CDN_FALLBACKS = [
+    `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${TFJS_VERSION}/dist/`,
+    `https://unpkg.com/@huggingface/transformers@${TFJS_VERSION}/dist/`,
+    `https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/`
+  ];
 
   const browserAiState = {
     tf: null,
@@ -7926,14 +7934,16 @@ let studio = loadStudioState();
       "Content-Type": "application/json"
     };
     if (provCfg.apiKey) {
+      // AI Horde uses apikey header + Bearer; Pollinations/LLM7 just Bearer if key exists
       headers["Authorization"] = `Bearer ${provCfg.apiKey}`;
+      if(provCfg.provider==="aihorde") headers["apikey"] = provCfg.apiKey;
     }
 
     const chatPath = provCfg.chatPath !== undefined ? provCfg.chatPath : "/chat/completions";
     const bodyStr = JSON.stringify(payload);
     const primaryUrl = `${provCfg.endpointBase}${chatPath}`;
     const fallbackBase = provCfg.fallbackBase || (provCfg.endpointBase !== provCfg.directBase ? provCfg.directBase : null);
-    const fallbackUrl = fallbackBase ? `${fallbackBase}${chatPath}` : null;
+    const fallbackUrl = fallbackBase ? `${fallbackBase}${provCfg.altChatPath || chatPath}` : null;
     const reqTimeoutMs = provCfg.isLocalOffline
       ? 120000
       : (provCfg.provider === "aihorde" ? 8500 : (provCfg.provider === "pollinations" ? 12000 : 16000)); // turbo: 35% faster timeout for snappy failover
@@ -7943,13 +7953,15 @@ let studio = loadStudioState();
     let res;
     try {
       res = await fetchWithTimeout(primaryUrl, { method: "POST", headers, body: bodyStr, signal }, reqTimeoutMs);
-      if (!res.ok && fallbackUrl && res.status >= 502 && res.status <= 504) {
-        res = await fetchWithTimeout(fallbackUrl, { method: "POST", headers, body: bodyStr, signal }, reqTimeoutMs);
+      // Smart retry: Pollinations primary can 404 or 500, try alt Gen endpoint immediately
+      const shouldTryAlt = !res.ok && fallbackUrl && (res.status===404 || res.status===400 || (res.status>=500 && res.status<=504));
+      if (shouldTryAlt) {
+        try{ const altRes = await fetchWithTimeout(fallbackUrl, { method: "POST", headers, body: bodyStr, signal }, Math.min(reqTimeoutMs, 8000)); if(altRes.ok) res = altRes; else if(altRes.status < 500) res = altRes; }catch{}
       }
     } catch (fetchErr) {
       if (fetchErr.name === "AbortError" && signal?.aborted) throw fetchErr;
       if (fallbackUrl) {
-        res = await fetchWithTimeout(fallbackUrl, { method: "POST", headers, body: bodyStr, signal }, reqTimeoutMs);
+        try{ res = await fetchWithTimeout(fallbackUrl, { method: "POST", headers, body: bodyStr, signal }, Math.min(reqTimeoutMs, 8000)); }catch(e){ throw fetchErr; }
       } else {
         throw fetchErr;
       }
@@ -11239,11 +11251,41 @@ let studio = loadStudioState();
     if(ra) ra.addEventListener("click", restoreAllHidden);
     const cl=document.getElementById("clearHiddenBtn");
     if(cl) cl.addEventListener("click", clearHiddenForever);
-    // Delegate hide buttons to avoid nested-button issues and handle dynamic grid
     document.addEventListener("click", (e)=>{
       const hb = e.target.closest("[data-hide-model]");
       if(hb){ e.preventDefault(); e.stopPropagation(); manuallyHideModel(hb.dataset.hideModel); }
     });
+    // Test all models button
+    const testBtn=document.getElementById("testAllModelsBtn");
+    if(testBtn) testBtn.addEventListener("click", testAllModelsLive);
+  }
+  // Make every model work: live test each provider, auto-disable failing ones with clear reason
+  async function testAllModelsLive(){
+    const btn=document.getElementById("testAllModelsBtn");
+    if(btn){ btn.disabled=true; btn.textContent="Testing…"; }
+    showToast("Testing all cloud providers…");
+    const providers = ["pollinations","llm7","aihorde"];
+    let ok=0, fail=0;
+    for(const prov of providers){
+      const m=models.find(x=> x.provider===prov && !isModelHidden(x));
+      if(!m) continue;
+      try{
+        const cfg=getProviderConfig(m);
+        const url=`${cfg.endpointBase}${cfg.chatPath||""}` || `${cfg.directBase}${cfg.chatPath||""}`;
+        // Minimal non-stream ping to check liveness without burning tokens
+        const payload={ model: m.id, messages:[{role:"user", content:"hi"}], max_tokens: 8, stream:false };
+        const headers={"Content-Type":"application/json"};
+        if(cfg.apiKey) headers["Authorization"]=`Bearer ${cfg.apiKey}`;
+        const r=await fetchWithTimeout(url, {method:"POST", headers, body: JSON.stringify(payload)}, 7000);
+        if(r.ok){ ok++; providerCooldownUntil.delete(prov); modelCooldownUntil.delete(m.id); }
+        else { fail++; const txt=await r.text().catch(()=> ""); console.warn(`test ${prov} ${r.status}`, txt.slice(0,200)); }
+      }catch(e){ fail++; console.warn(`test ${prov} err`, e.message); }
+    }
+    // Local servers
+    const localRes=await syncOllamaModels(true).catch(()=> ({ok:false}));
+    showToast(`Test done: ${ok} cloud OK, ${fail} failed${localRes.ok? ` + ${localRes.count} local` : ""}`);
+    rebuildModelsList(); renderHiddenModelsManager(); updateHiddenBanner();
+    if(btn){ btn.disabled=false; btn.textContent="Test all providers"; }
   }
   async function retestHiddenModels(){
     const list=getHiddenModelsList();

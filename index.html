@@ -4137,16 +4137,12 @@
   function autoCaptureCodeToStudio(assistantText, triggerText){
     try{
       if(!assistantText) return false;
-      // Don't duplicate if AI already used tool (toolEvents present)
       const html = extractHtmlFromAssistantText(assistantText);
-      if(!html || html.length < 120) return false;
-      // Heuristic: only auto-capture when user asked to build/code/create OR assistant clearly produced a page
-      const ctx = String((triggerText||"") + " " + assistantText.slice(0,600)).toLowerCase();
-      const wantsBuild = /build|create|make|generate|clone|website|webpage|web page|app|game|tool|html|page|component|design|layout|landing|portfolio/i.test(ctx);
-      if(!wantsBuild && html.length < 400) return false;
+      if(!html || html.length < 100) return false;
+      // Always auto-capture any substantial HTML/JS block — user explicitly said "just typing code should type into web thing"
       // Avoid overwriting identical doc
       if(studio.html && studio.html.trim() === html.trim()) return false;
-      if(studio.html && studio.html.includes(html.slice(0,80)) && Math.abs(studio.html.length - html.length) < 20) return false;
+      if(studio.html && studio.html.includes(html.slice(0,60)) && Math.abs(studio.html.length - html.length) < 15) return false;
       // Infer filename from <title>
       const tMatch = html.match(/<title>(.*?)<\/title>/i);
       const fname = tMatch ? (tMatch[1].trim().replace(/[^a-z0-9._-]+/gi,"_").slice(0,28) || "index") + ".html" : "index.html";
@@ -5085,10 +5081,12 @@
       tools.push(...WEB_TOOL_DEFINITIONS);
     }
 
-    // Compact local CPU models (<=3B) and AI Horde workers only attach Web Studio / Security Audit tool schemas on prompts that actually ask for web building/editing/auditing.
+    // Web Studio must ALWAYS be available when enabled — prior strict regex blocked "build a todo app" on Horde workers, breaking the core feature
     const isCompactLocal = isLocalOfflineModel(modelObj) && /(?:^|[:\-_])(?:0\.5|0\.6|0\.8|1|1\.5|1\.7|2|3)b\b/i.test(modelObj?.id || "");
+    // Always attach studio tools for non-compact models; for Horde/compact, still attach on any build-ish intent (very broad)
     const wantsStudioTools = (!isCompactLocal && !isHorde)
-      || /\b(html|webpage|web\s*page|website|web\s*studio|studio|landing\s*page|portfolio|patch|redesign|clone|publish|github|netlify|webhook|build\s+a\b.*\b(site|page|app)|edit\s+.*\b(site|page)|fix\s+.*\b(site|page))\b/i.test(text);
+      || /\b(build|create|make|generate|design|code|develop|prototype|clone|remake|remix|edit|update|fix|redesign|replicate|copy|html|webpage|web\s*page|website|web\s*studio|studio|landing\s*page|portfolio|patch|publish|github|netlify|webhook|site|app|game|tool|page|landing|portfolio|calculator|dashboard|chat|todo|store|shop|blog|card|button|form|animation|canvas|svg|react|vue)\b/i.test(text)
+      || text.trim().length < 120; // short prompts often are build requests, keep tools attached
     const wantsSecTools = (!isCompactLocal && !isHorde)
       || /\b(audit|security|owasp|xss|csp|headers?|vulnerab|well-?known|hsts|cors\s+check|pentest)\b/i.test(text);
 
@@ -7866,7 +7864,8 @@
 
       for (let round = 0; round < maxRounds; round++) {
         const allowTools = activeTools.length > 0 && round < maxRounds - 1;
-        const toolChoice = allowTools && round === 0 && requireSearchThisTurn ? "required" : (allowTools ? "auto" : undefined);
+        const wantsBuildNow = /\b(build|create|make|generate|clone|website|webpage|web page|app|game|tool|page|html|code.*page|design a )\b/i.test(lastUserPrompt);
+        const toolChoice = (allowTools && round === 0 && requireSearchThisTurn) ? "required" : (allowTools && wantsBuildNow && round === 0 ? "required" : (allowTools ? "auto" : undefined));
 
         let roundPrefixReasoning = assistantMsg.reasoning ? assistantMsg.reasoning + "\n\n" : "";
         let roundContent = "";
